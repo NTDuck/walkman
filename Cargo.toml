@@ -1,0 +1,34 @@
+[workspace]
+members = [
+    "walkman/core/domain",
+    "walkman/core/use-cases/",
+    "walkman/infrastructures/gateways-impl",
+    "walkman/infrastructures/interface-adapters",
+    "walkman/configurations/*",
+]
+resolver = "2"
+
+[workspace.package]
+edition = "2021"
+license = "BSD-3-Clause"
+repository = "https://github.com/NTDuck/walkman"
+publish = false
+
+[workspace.dependencies]
+# Cross-cutting concerns, centralized
+
+# Crates that we choose to marry
+# See: https://blessed.rs/crates
+
+[workspace.lints.rust]
+# See: https://doc.rust-lang.org/rustc/lints/listing/index.html
+
+[workspace.lints.clippy]
+# See: https://rust-lang.github.io/rust-clippy/master/index.html
+derived_hash_with_manual_eq = "allow"
+new_without_default = "allow"
+missing_safety_doc = "allow"
+let_and_return = "allow"
+
+[workspace.metadata.rust-analyzer]
+# See: https://rust-analyzer.github.io/book/diagnostics.html
