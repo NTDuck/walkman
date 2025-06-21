@@ -16,6 +16,7 @@ publish = false
 
 [workspace.dependencies]
 # Cross-cutting concerns, centralized
+archery = { version = "1.2.1", features = ["triomphe", "serde"] }
 
 # Crates that we choose to marry
 # See: https://blessed.rs/crates
