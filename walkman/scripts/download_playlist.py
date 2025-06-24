@@ -1,92 +1,102 @@
+from argparse import ArgumentParser
+import logging
+import math
 import sys
-import os
 from pathlib import Path
+from typing import Any
 from tqdm import tqdm
 from yt_dlp import YoutubeDL
 from yt_dlp.utils import DownloadError
 
+
 def main():
-    import argparse
+    parser = ArgumentParser()
+    parser.add_argument("-i", "--upstream-uri")
+    parser.add_argument("-o", "--downstream-uri", nargs="?", default=".")
 
-    parser = argparse.ArgumentParser(description="Download audio from a playlist using yt-dlp with progress bars.")
-    parser.add_argument("url", help="Playlist URL")
-    parser.add_argument("dest", nargs="?", default=".", help="Destination folder (default: current dir)")
     args = parser.parse_args()
+    upstream_uri = args.upstream_uri
+    downstream_uri = args.downstream_uri
 
-    dest = Path(args.dest).resolve()
-    dest.mkdir(parents=True, exist_ok=True)
+    downstream_uri = Path(downstream_uri).resolve()
+    downstream_uri.mkdir(parents=True, exist_ok=True)
 
-    # Get playlist info without downloading
-    ydl_opts_info = {
+    ydl_opts = {
         "quiet": True,
         "extract_flat": True,
         "force_generic_extractor": False,
     }
 
-    with YoutubeDL(ydl_opts_info) as ydl:
-        info = ydl.extract_info(args.url, download=False)
-        if "entries" not in info:
-            print("Not a playlist URL or couldn't retrieve entries.")
-            sys.exit(1)
-        entries = info["entries"]
-        playlist_title = info.get("title", "Playlist")
-        total = len(entries)
+    try:
+        with YoutubeDL(ydl_opts) as ydl:
+            info = ydl.extract_info(url=upstream_uri, download=False)
 
-    playlist_bar = tqdm(total=total, desc=playlist_title, position=0)
+            if "entries" not in info:
+                logging.error("Invalid URI")
+                sys.exit(1)
 
-    for idx, entry in enumerate(entries):
-        video_url = entry["url"]
-        video_title = entry.get("title", f"Track {idx+1}")
+            playlist_title = info["title"]
+            videos = info["entries"]
+            video_count = len(videos)
+        
+    except DownloadError as err:
+        logging.error(err)
 
-        # Placeholder progress bar; will be updated by hook
-        audio_bar = tqdm(
-            total=100,
-            desc=video_title,
-            unit="%",
-            position=1,
-            leave=False,
-            bar_format="{desc:.40} | {bar} | {percentage:3.0f}% [{n_fmt}/{total_fmt}]"
-        )
+    video_progress_bar = tqdm(
+        initial=math.nan,
+        total=math.nan,
+    )
 
-        def progress_hook(d):
-            if d["status"] == "downloading":
-                downloaded = d.get("downloaded_bytes", 0)
-                total_bytes = d.get("total_bytes", d.get("total_bytes_estimate", 1))
-                speed = d.get("speed", 0)
+    playlist_progress_bar = tqdm(
+        desc=playlist_title,
+        initial=0,
+        total=video_count,
+    )
 
-                if total_bytes > 0:
-                    audio_bar.total = total_bytes
-                    audio_bar.n = downloaded
-                    audio_bar.set_description(f'{d.get("filename", video_title)[:40]}')
-                    audio_bar.set_postfix_str(f'{downloaded//1024//1024}MB/{total_bytes//1024//1024}MB')
-                    audio_bar.refresh()
+    for idx, video in enumerate(videos):
+        video_title = video["title"]
+        video_progress_bar.set_description(video_title)
+        video_progress_bar.initial = 0
 
-            elif d["status"] == "finished":
-                audio_bar.n = audio_bar.total
-                audio_bar.refresh()
-                audio_bar.close()
+        def progress_hook(d: dict[str, Any]):
+            status = d["status"]
 
-        ydl_opts_download = {
+            if status == "downloading":
+                downloaded_bytes = d["downloaded_bytes"]
+                total_bytes = d["total_bytes"]
+
+                video_progress_bar.n = downloaded_bytes
+                video_progress_bar.total = total_bytes
+
+            elif status == "error":
+                pass
+
+            elif status == "finished":
+                video_progress_bar.clear()
+                playlist_progress_bar.update(1)
+
+        ydl_opts = {
             "quiet": True,
-            "outtmpl": str(dest / "%(title)s.%(ext)s"),
+            "no_warnings": True,
+            "outtmpl": str(downstream_uri / "%(title)s.%(ext)s"),
             "format": "bestaudio/best",
-            "progress_hooks": [progress_hook],
             "postprocessors": [{
                 "key": "FFmpegExtractAudio",
                 "preferredcodec": "mp3",
-                "preferredquality": "192",
-            }]
+                "preferredquality": "128",  # medium quality
+            }],
+            "logger": None,
         }
 
         try:
-            with YoutubeDL(ydl_opts_download) as ydl:
-                ydl.download([video_url])
-        except DownloadError as e:
-            print(f"Failed to download {video_title}: {e}")
+            with YoutubeDL(ydl_opts) as ydl:
+                ydl.add_progress_hook(progress_hook)
+                ydl.download([video["url"]])
+        
+        except DownloadError as err:
+            logging.error(err)
 
-        playlist_bar.update(1)
-
-    playlist_bar.close()
+    playlist_progress_bar.close()
 
 
 if __name__ == "__main__":
