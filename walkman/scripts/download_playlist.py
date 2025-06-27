@@ -43,20 +43,23 @@ def main():
         logging.error(err)
 
     video_progress_bar = tqdm(
-        initial=math.nan,
-        total=math.nan,
+        initial=0,
+        total=None,
+        unit="MB",
+        unit_scale=True,
+        unit_divisor=1024 * 1024,
     )
 
     playlist_progress_bar = tqdm(
         desc=playlist_title,
         initial=0,
         total=video_count,
+        unit="?",
     )
 
     for idx, video in enumerate(videos):
         video_title = video["title"]
         video_progress_bar.set_description(video_title)
-        video_progress_bar.initial = 0
 
         def progress_hook(d: dict[str, Any]):
             status = d["status"]
@@ -69,7 +72,7 @@ def main():
                 video_progress_bar.total = total_bytes
 
             elif status == "error":
-                pass
+                logging.error(d["error"])
 
             elif status == "finished":
                 video_progress_bar.clear()
