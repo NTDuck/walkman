@@ -7,8 +7,10 @@ repository.workspace = true
 publish.workspace = true
 
 [dependencies]
-archery = { workspace = true }
 async-trait = { workspace = true }
+async-stream = { workspace = true }
+futures-core = "0.3.31"
+triomphe = { workspace = true }
 
 [lints]
 workspace = true

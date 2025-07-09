@@ -16,8 +16,10 @@ publish = false
 
 [workspace.dependencies]
 # Cross-cutting concerns, centralized
-archery = { version = "1.2.1", features = ["triomphe", "serde"] }
 async-trait = "0.1.88"
+async-stream = "0.3.6"
+tokio = { version = "1.46.1", features = ["full"] }
+triomphe = "0.1.14"
 
 # Crates that we choose to marry
 # See: https://blessed.rs/crates

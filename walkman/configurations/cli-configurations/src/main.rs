@@ -1,50 +1,93 @@
+// use std::process::{Command, Stdio};
+// use std::io::{BufReader, BufRead};
+// use serde::Deserialize;
+
+// #[derive(Debug, Deserialize)]
+// struct PlaylistEntry {
+//     id: String,
+//     title: String,
+//     url: Option<String>,
+// }
+
+// fn main() -> std::io::Result<()> {
+//     let url = "https://www.youtube.com/watch?v=4A6Wdy1NDME&list=RD4A6Wdy1NDME"; // audio
+//     let url = "https://youtube.com/playlist?list=PL8LPRmXba35e4wJtB2i69ggoNwTU5nywg&si=4QC-oJJajwcaMzUx"; // playlist
+//     let output = Command::new("yt-dlp")
+//         .arg("-j")
+//         .arg("--flat-playlist")
+//         .arg(url)
+//         .stdout(Stdio::piped())
+//         .spawn()?
+//         .stdout
+//         .expect("Failed to capture stdout");
+
+//     let reader = BufReader::new(output);
+//     for line in reader.lines() {
+//         let line = line?;
+//         let entry: PlaylistEntry = serde_json::from_str(&line).unwrap();
+//         println!("{:?}", entry);
+//     }
+
+//     Ok(())
+// }
+
+// /*
+// Necessary tasks:
+// - Print version of yt-dlp
+// - Getting metadata of playlist & 
+// */
+
+
+use std::process::{Command, Stdio};
+use std::io::{BufRead, BufReader};
+use regex::Regex;
 use indicatif::{ProgressBar, ProgressStyle};
-use tokio::time::{sleep, Duration};
 
-#[tokio::main]
-async fn main() {
-    // let bar = ProgressBar::new(100);
-    // bar.set_style(
-    //     ProgressStyle::default_bar()
-    //         .template("{msg} [{bar:40.cyan/blue}] {pos}%")
-    //         .unwrap(),
-    // );
+fn main() -> std::io::Result<()> {
+    let url = "https://youtu.be/ELj1yXR12bE";
 
-    // bar.set_message("Progress");
-
-    // bar.set_position(51);
-    // sleep(Duration::from_millis(500)).await;
-
-    // bar.set_position(12);
-    // sleep(Duration::from_millis(500)).await;
-
-    // bar.set_position(38);
-    // sleep(Duration::from_millis(500)).await;
-
-    // bar.finish_with_message("Done");
-
-    use std::process::{Command, Stdio};
-
-    // stdout must be configured with `Stdio::piped` in order to use
-    // `echo_child.stdout`
-    let echo_child = Command::new("echo")
-        .arg("Oh no, a tpyo!")
+    let mut child = Command::new("yt-dlp")
+        .args([
+            "--newline",
+            "--no-warnings",
+            "-f", "bestaudio",
+            url,
+        ])
         .stdout(Stdio::piped())
-        .spawn()
-        .expect("Failed to start echo process");
+        .spawn()?;
 
-    // Note that `echo_child` is moved here, but we won't be needing
-    // `echo_child` anymore
-    let echo_out = echo_child.stdout.expect("Failed to open echo stdout");
+    let stdout = child.stdout.take().expect("No stdout");
+    let reader = BufReader::new(stdout);
 
-    let mut sed_child = Command::new("sed")
-        .arg("s/tpyo/typo/")
-        .stdin(Stdio::from(echo_out))
-        .stdout(Stdio::piped())
-        .spawn()
-        .expect("Failed to start sed process");
+    let progress_re = Regex::new(
+        r"\[download\]\s+([\d.]+)% of\s+([\d.]+)([KMG]iB) at\s+([\d.]+[KMG]iB/s) ETA ([\d:]+)"
+    ).unwrap();
 
-    let output = sed_child.wait_with_output().expect("Failed to wait on sed");
-    assert_eq!(b"Oh no, a typo!\n", output.stdout.as_slice());
+    let pb = ProgressBar::new(100); // Set as percent scale first
+    pb.set_style(
+        ProgressStyle::default_bar()
+            .template("{msg} [{bar:40.cyan/blue}] {pos:.1}%/{len:.0}% ({bytes_total}) {wide_msg}")
+            .unwrap()
+            .progress_chars("##-"),
+    );
+    pb.set_message("Downloading");
+
+    for line in reader.lines() {
+        let line = line?;
+
+        if let Some(cap) = progress_re.captures(&line) {
+            let percent: f64 = cap[1].parse().unwrap();
+            let total_size = format!("{}{}", &cap[2], &cap[3]);
+            let speed = &cap[4];
+            let eta = &cap[5];
+
+            pb.set_position(percent as u64);
+            pb.set_message(format!("Downloading @ {}", speed));
+            pb.set_message(format!("ETA: {} | Size: {}", eta, total_size));
+        }
+    }
+
+    pb.finish_with_message("Download complete");
+    child.wait()?;
+    Ok(())
 }
-

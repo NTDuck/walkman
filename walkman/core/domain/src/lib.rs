@@ -6,17 +6,23 @@ pub struct Video {
     pub id: MaybeOwnedStr,
     pub title: MaybeOwnedStr,
     pub tags: Vec<MaybeOwnedStr>,
-
-    pub channel_id: MaybeOwnedStr,
 }
 
 pub struct Playlist {
+    pub id: MaybeOwnedStr,
+    pub title: MaybeOwnedStr,
 
+    pub video_ids: Vec<MaybeOwnedStr>,
 }
 
 pub struct Channel {
     pub id: MaybeOwnedStr,
+    pub title: MaybeOwnedStr,
+    
+    pub video_ids: Vec<MaybeOwnedStr>,
+    pub playlist_ids: Vec<MaybeOwnedStr>,
 }
+
 
 /*
 Options:
