@@ -2,8 +2,7 @@
 members = [
     "walkman/core/domain",
     "walkman/core/use-cases/",
-    "walkman/infrastructures/gateways-impl",
-    "walkman/infrastructures/interface-adapters",
+    "walkman/infrastructures",
     "walkman/configurations/*",
 ]
 resolver = "2"

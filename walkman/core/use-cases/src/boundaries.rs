@@ -1,6 +1,6 @@
 use async_trait::async_trait;
 
-use crate::utils::MaybeOwnedStr;
+use crate::utils::aliases::MaybeOwnedStr;
 
 #[async_trait]
 pub trait DownloadVideoInputBoundary {
@@ -12,9 +12,10 @@ pub struct DownloadVideoRequestModel {
 }
 
 #[async_trait]
-pub trait DownloadVideoOutputBoundary {
+pub trait DownloadVideoOutputBoundary: Send + Sync {
     async fn refresh(&self);
     async fn update(&self, snapshot: DownloadVideoProgressSnapshot);
+    async fn terminate(&self);
 }
 
 pub struct DownloadVideoProgressSnapshot {
@@ -36,6 +37,7 @@ pub struct DownloadPlaylistRequestModel {
 #[async_trait]
 pub trait DownloadPlaylistOutputBoundary: Send + Sync {
     async fn update(&self, snapshot: DownloadPlaylistProgressSnapshot);
+    async fn terminate(&self);
 }
 
 // TODO consult docs for exact lim
