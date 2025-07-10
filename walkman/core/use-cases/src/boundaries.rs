@@ -1,14 +1,12 @@
 use async_trait::async_trait;
 
-use crate::utils::aliases::MaybeOwnedStr;
-
 #[async_trait]
 pub trait DownloadVideoInputBoundary {
     async fn apply(&self, model: DownloadVideoRequestModel);
 }
 
 pub struct DownloadVideoRequestModel {
-    pub url: MaybeOwnedStr,
+    pub url: String,
 }
 
 #[async_trait]
@@ -21,8 +19,8 @@ pub trait DownloadVideoOutputBoundary: Send + Sync {
 pub struct DownloadVideoProgressSnapshot {
     pub percentage: u8,
     pub eta: std::time::Duration,
-    pub size: MaybeOwnedStr,
-    pub rate: MaybeOwnedStr,
+    pub size: String,
+    pub rate: String,
 }
 
 #[async_trait]
@@ -31,7 +29,7 @@ pub trait DownloadPlaylistInputBoundary {
 }
 
 pub struct DownloadPlaylistRequestModel {
-    pub url: MaybeOwnedStr,
+    pub url: String,
 }
 
 #[async_trait]

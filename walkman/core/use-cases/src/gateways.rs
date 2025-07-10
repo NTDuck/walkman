@@ -1,19 +1,39 @@
-use std::path::Path;
-
 use async_trait::async_trait;
+use domain::{Playlist, Video};
 use futures_core::Stream;
 
-use crate::{boundaries::{DownloadPlaylistProgressSnapshot, DownloadVideoProgressSnapshot}, utils::aliases::MaybeOwnedStr};
+use crate::{boundaries::{DownloadPlaylistProgressSnapshot, DownloadVideoProgressSnapshot}};
 
 #[async_trait]
 pub trait Downloader {
-    async fn download_video(&self, url: MaybeOwnedStr) -> impl Stream<Item = DownloadVideoProgressSnapshot>;
-    async fn download_playlist(&self, url: MaybeOwnedStr) -> impl Stream<Item = DownloadPlaylistProgressSnapshot>;
+    async fn download_video(&self, url: String) -> Result<(
+            Video,
+            impl Stream<Item = DownloadVideoProgressSnapshot>,
+        ), DownloadError>;
+    async fn download_playlist(&self, url: String) -> Result<(
+            Playlist,
+            impl Stream<Item = DownloadPlaylistProgressSnapshot>,
+            impl Stream<Item = DownloadVideoProgressSnapshot>,
+        ), DownloadError>;
+}
+
+pub struct VideoDownloadSnapshot {
+    pub percentage: u8,
+    pub eta: std::time::Duration,
+    pub size: String,
+    pub rate: String,
+}
+
+pub struct PlaylistDownloadSnapshot {
+    pub downloaded: usize,
+    pub total: usize,
+}
+
+pub enum DownloadError {
+    
 }
 
 #[async_trait]
-pub trait MetadataWriter {
-    async fn set_album(&self, path: Path, album: MaybeOwnedStr);
-    async fn set_artist(&self, path: Path, artist: MaybeOwnedStr);
-    async fn set_genre(&self, path: Path, genre: MaybeOwnedStr);
+pub trait VideoMetadataWriter {
+    async fn write(&self, video: Video);
 }

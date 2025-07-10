@@ -1,26 +1,27 @@
-use crate::utils::aliases::MaybeOwnedStr;
-
-mod utils;
+use std::path::PathBuf;
 
 pub struct Video {
-    pub id: MaybeOwnedStr,
-    pub title: MaybeOwnedStr,
-    pub tags: Vec<MaybeOwnedStr>,
+    pub id: String,
+    pub metadata: VideoMetadata,
+    pub path: PathBuf,
+}
+
+pub struct VideoMetadata {
+    pub title: String,
+
+    pub album: String,
+    pub artists: Vec<String>,
+    pub genres: Vec<String>,
 }
 
 pub struct Playlist {
-    pub id: MaybeOwnedStr,
-    pub title: MaybeOwnedStr,
-
-    pub video_ids: Vec<MaybeOwnedStr>,
+    pub id: String,
+    pub metadata: PlaylistMetadata,
+    pub videos: Vec<Video>,
 }
 
-pub struct Channel {
-    pub id: MaybeOwnedStr,
-    pub title: MaybeOwnedStr,
-    
-    pub video_ids: Vec<MaybeOwnedStr>,
-    pub playlist_ids: Vec<MaybeOwnedStr>,
+pub struct PlaylistMetadata {
+    pub title: String,
 }
 
 

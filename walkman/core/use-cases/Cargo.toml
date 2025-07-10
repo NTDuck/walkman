@@ -12,5 +12,7 @@ async-stream = { workspace = true }
 futures-core = "0.3.31"
 triomphe = { workspace = true }
 
+domain = { path = "../domain" }
+
 [lints]
 workspace = true
