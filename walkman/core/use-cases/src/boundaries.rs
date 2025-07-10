@@ -1,5 +1,7 @@
 use async_trait::async_trait;
 
+use crate::gateways::{PlaylistDownloadSnapshot, VideoDownloadSnapshot};
+
 #[async_trait]
 pub trait DownloadVideoInputBoundary {
     async fn apply(&self, model: DownloadVideoRequestModel);
@@ -12,15 +14,8 @@ pub struct DownloadVideoRequestModel {
 #[async_trait]
 pub trait DownloadVideoOutputBoundary: Send + Sync {
     async fn refresh(&self);
-    async fn update(&self, snapshot: DownloadVideoProgressSnapshot);
+    async fn update(&self, snapshot: VideoDownloadSnapshot);
     async fn terminate(&self);
-}
-
-pub struct DownloadVideoProgressSnapshot {
-    pub percentage: u8,
-    pub eta: std::time::Duration,
-    pub size: String,
-    pub rate: String,
 }
 
 #[async_trait]
@@ -34,7 +29,7 @@ pub struct DownloadPlaylistRequestModel {
 
 #[async_trait]
 pub trait DownloadPlaylistOutputBoundary: Send + Sync {
-    async fn update(&self, snapshot: DownloadPlaylistProgressSnapshot);
+    async fn update(&self, snapshot: PlaylistDownloadSnapshot);
     async fn terminate(&self);
 }
 
