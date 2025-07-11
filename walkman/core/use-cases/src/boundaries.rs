@@ -32,10 +32,3 @@ pub trait DownloadPlaylistOutputBoundary: Send + Sync {
     async fn update(&self, snapshot: PlaylistDownloadSnapshot);
     async fn terminate(&self);
 }
-
-// TODO consult docs for exact lim
-#[derive(Default)]
-pub struct DownloadPlaylistProgressSnapshot {
-    pub downloaded_videos_count: usize,
-    pub total_videos_count: usize,
-}

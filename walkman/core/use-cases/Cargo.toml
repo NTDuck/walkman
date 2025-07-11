@@ -10,6 +10,9 @@ publish.workspace = true
 async-trait = { workspace = true }
 async-stream = { workspace = true }
 futures-core = "0.3.31"
+futures-util = "0.3.31"
+tokio = { workspace = true, features = ["rt"] }
+tracing = { workspace = true }
 triomphe = { workspace = true }
 
 domain = { path = "../domain" }

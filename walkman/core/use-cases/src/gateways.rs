@@ -18,11 +18,13 @@ pub struct VideoDownloadSnapshot {
     pub rate: String,
 }
 
+// TODO consult docs for exact lim
 pub struct PlaylistDownloadSnapshot {
     pub downloaded: usize,
     pub total: usize,
 }
 
+#[derive(Debug)]
 pub enum DownloadError {
 
 }
