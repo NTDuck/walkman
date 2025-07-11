@@ -1,36 +1,29 @@
-// use async_stream::stream;
-// use async_trait::async_trait;
-// use domain::{Playlist, Video};
-// use use_cases::gateways::{DownloadError, Downloader, PlaylistDownloadSnapshot, Stream, VideoDownloadSnapshot};
+mod utils;
 
-// pub struct YtDlpDownloader;
+use async_stream::stream;
+use async_trait::async_trait;
+use use_cases::gateways::{Downloader, PlaylistDownloadEvent, VideoDownloadEvent};
 
-// #[async_trait]
-// impl Downloader for YtDlpDownloader {
-//     async fn download_video(&self, _url: String) -> Result<(Video, Stream<VideoDownloadSnapshot>), DownloadError> {
-//         Ok((
-//             Video::default(),
-//             Box::pin(stream! {
-//                 for _ in 0..10 {
-//                     yield VideoDownloadSnapshot::default();
-//                 }
-//             }),
-//         ))
-//     }
+use crate::utils::aliases::{BoxedStream, MaybeOwnedString};
 
-//     async fn download_playlist(&self, _url: String) -> Result<(Playlist, Stream<PlaylistDownloadSnapshot>, Stream<VideoDownloadSnapshot>), DownloadError> {
-//         Ok((
-//             Playlist::default(),
-//             Box::pin(stream! {
-//                 for _ in 0..10 {
-//                     yield PlaylistDownloadSnapshot::default();
-//                 }
-//             }),
-//             Box::pin(stream! {
-//                 for _ in 0..10 {
-//                     yield VideoDownloadSnapshot::default();
-//                 }
-//             }),
-//         ))
-//     }
-// }
+pub struct YtDlpDownloader;
+
+#[async_trait]
+impl Downloader for YtDlpDownloader {
+    async fn download_video(&self, _url: MaybeOwnedString) -> BoxedStream<VideoDownloadEvent> {
+        Box::pin(stream! {
+            yield VideoDownloadEvent::Failed(Default::default());
+        })
+    }
+
+    async fn download_playlist(&self, _url: MaybeOwnedString) -> (BoxedStream<PlaylistDownloadEvent>, BoxedStream<VideoDownloadEvent>) {
+        (
+            Box::pin(stream! {
+                yield PlaylistDownloadEvent::Failed(Default::default());
+            }),
+            Box::pin(stream! {
+                yield VideoDownloadEvent::Failed(Default::default());
+            }),
+        )
+    }
+}

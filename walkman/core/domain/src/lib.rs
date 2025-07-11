@@ -2,14 +2,12 @@ pub(crate) mod utils;
 
 use crate::utils::aliases::{MaybeOwnedPath, MaybeOwnedString};
 
-#[derive(Default)]
 pub struct Video {
     pub id: MaybeOwnedString,
     pub metadata: VideoMetadata,
     pub path: MaybeOwnedPath,
 }
 
-#[derive(Default)]
 pub struct VideoMetadata {
     pub title: MaybeOwnedString,
 
@@ -18,14 +16,12 @@ pub struct VideoMetadata {
     pub genres: Vec<MaybeOwnedString>,
 }
 
-#[derive(Default)]
 pub struct Playlist {
     pub id: MaybeOwnedString,
     pub metadata: PlaylistMetadata,
     pub videos: Vec<Video>,
 }
 
-#[derive(Default)]
 pub struct PlaylistMetadata {
     pub title: MaybeOwnedString,
 }

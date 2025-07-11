@@ -10,8 +10,9 @@ publish.workspace = true
 domain = { path = "../core/domain" }
 use-cases = { path = "../core/use-cases" }
 
-async-trait = { workspace = true }
 async-stream = { workspace = true }
+async-trait = { workspace = true }
+futures-core = { workspace = true }
 lofty = "0.22.4"
 
 [lints]

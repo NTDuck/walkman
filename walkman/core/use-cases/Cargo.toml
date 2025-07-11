@@ -9,11 +9,9 @@ publish.workspace = true
 [dependencies]
 domain = { path = "../domain" }
 
-async-stream = { workspace = true }
 async-trait = { workspace = true }
 futures-core = { workspace = true }
 futures-util = { workspace = true }
-rayon = { workspace = true }
 tokio = { workspace = true, features = ["rt"] }
 triomphe = { workspace = true }
 
