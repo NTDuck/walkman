@@ -26,7 +26,7 @@ impl DownloadVideoInputBoundary for DownloadVideoInteractor {
             pin_mut!(video_events);
 
             while let Some(event) = video_events.next().await {
-                output_boundary.on_video_event(&event).await;
+                output_boundary.update(&event).await;
 
                 match event {
                     VideoDownloadEvent::Completed(video) => {
@@ -60,7 +60,7 @@ impl DownloadPlaylistInputBoundary for DownloadPlaylistInteractor {
             pin_mut!(playlist_events);
 
             while let Some(event) = playlist_events.next().await {
-                output_boundary.on_playlist_event(&event).await;
+                DownloadPlaylistOutputBoundary::update(&*output_boundary, &event).await;
 
                 match event {
                     PlaylistDownloadEvent::Completed(playlist) => {
@@ -77,7 +77,7 @@ impl DownloadPlaylistInputBoundary for DownloadPlaylistInteractor {
             pin_mut!(video_events);
 
             while let Some(event) = video_events.next().await {
-                output_boundary.on_video_event(&event).await;
+                DownloadVideoOutputBoundary::update(&*output_boundary, &event).await;
             }
         });
     }

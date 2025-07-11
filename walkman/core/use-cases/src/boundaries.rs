@@ -13,7 +13,7 @@ pub struct DownloadVideoRequestModel {
 
 #[async_trait]
 pub trait DownloadVideoOutputBoundary: Send + Sync {
-    async fn on_video_event(&self, event: &VideoDownloadEvent);
+    async fn update(&self, event: &VideoDownloadEvent);
 }
 
 #[async_trait]
@@ -26,7 +26,6 @@ pub struct DownloadPlaylistRequestModel {
 }
 
 #[async_trait]
-pub trait DownloadPlaylistOutputBoundary: Send + Sync {
-    async fn on_playlist_event(&self, event: &PlaylistDownloadEvent);
-    async fn on_video_event(&self, event: &VideoDownloadEvent);
+pub trait DownloadPlaylistOutputBoundary: DownloadVideoOutputBoundary {
+    async fn update(&self, event: &PlaylistDownloadEvent);
 }

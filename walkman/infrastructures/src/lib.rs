@@ -2,9 +2,35 @@ mod utils;
 
 use async_stream::stream;
 use async_trait::async_trait;
-use use_cases::gateways::{Downloader, PlaylistDownloadEvent, VideoDownloadEvent};
+use domain::Video;
+use use_cases::{boundaries::{DownloadPlaylistOutputBoundary, DownloadVideoOutputBoundary}, gateways::{Downloader, MetadataWriter, PlaylistDownloadEvent, VideoDownloadEvent}};
 
 use crate::utils::aliases::{BoxedStream, MaybeOwnedString};
+
+pub struct DownloadVideoProgressBar;
+
+#[async_trait]
+impl DownloadVideoOutputBoundary for DownloadVideoProgressBar {
+    async fn update(&self, _event: &VideoDownloadEvent) {
+
+    }
+}
+
+pub struct DownloadPlaylistAndVideoProgressBar;
+
+#[async_trait]
+impl DownloadVideoOutputBoundary for DownloadPlaylistAndVideoProgressBar {
+    async fn update(&self, _event: &VideoDownloadEvent) {
+        
+    }
+}
+
+#[async_trait]
+impl DownloadPlaylistOutputBoundary for DownloadPlaylistAndVideoProgressBar {
+    async fn update(&self, _event: &PlaylistDownloadEvent) {
+
+    }
+}
 
 pub struct YtDlpDownloader;
 
@@ -25,5 +51,14 @@ impl Downloader for YtDlpDownloader {
                 yield VideoDownloadEvent::Failed(Default::default());
             }),
         )
+    }
+}
+
+pub struct LoftyMetadataWriter;
+
+#[async_trait]
+impl MetadataWriter for LoftyMetadataWriter {
+    async fn write_video(&self, video: &Video) {
+        
     }
 }
