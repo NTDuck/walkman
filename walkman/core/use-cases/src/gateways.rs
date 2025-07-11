@@ -1,24 +1,23 @@
-use std::{pin::Pin, process::ExitCode};
+use std::{process::ExitCode, time::Duration};
 
 use async_trait::async_trait;
 use domain::{Playlist, Video};
 use futures_util::{stream::FuturesUnordered, StreamExt};
 
+use crate::utils::aliases::{BoxedStream, MaybeOwnedString};
+
 #[async_trait]
 pub trait Downloader: Send + Sync {
-    async fn download_video(&self, url: String) -> Stream<VideoDownloadEvent>;
-
-    async fn download_playlist(&self, url: String) -> (Stream<PlaylistDownloadEvent>, Stream<VideoDownloadEvent>);
+    async fn download_video(&self, url: MaybeOwnedString) -> BoxedStream<VideoDownloadEvent>;
+    async fn download_playlist(&self, url: MaybeOwnedString) -> (BoxedStream<PlaylistDownloadEvent>, BoxedStream<VideoDownloadEvent>);
 }
-
-pub type Stream<T> = Pin<Box<dyn futures_core::Stream<Item = T> + Send>>;
 
 pub enum VideoDownloadEvent {
     Downloading {
         percentage: u8,
-        eta: std::time::Duration,
-        size: String,
-        rate: String,
+        eta: Duration,
+        size: MaybeOwnedString,
+        rate: MaybeOwnedString,
     },
     Completed(Video),
     Failed(ExitCode),
@@ -26,6 +25,8 @@ pub enum VideoDownloadEvent {
 
 pub enum PlaylistDownloadEvent {
     Downloading {
+        video: Video,
+
         downloaded: usize,
         total: usize,
     },
@@ -44,6 +45,6 @@ pub trait MetadataWriter: Send + Sync {
             .collect::<FuturesUnordered<_>>();
 
         // https://users.rust-lang.org/t/awaiting-futuresunordered/49295
-        while let Some(()) = futures.next().await {}
+        while let Some(_) = futures.next().await {}
     }
 }

@@ -15,7 +15,6 @@ futures-core = { workspace = true }
 futures-util = { workspace = true }
 rayon = { workspace = true }
 tokio = { workspace = true, features = ["rt"] }
-tracing = { workspace = true }
 triomphe = { workspace = true }
 
 [lints]

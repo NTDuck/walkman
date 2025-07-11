@@ -1,31 +1,33 @@
-use std::path::PathBuf;
+pub(crate) mod utils;
+
+use crate::utils::aliases::{MaybeOwnedPath, MaybeOwnedString};
 
 #[derive(Default)]
 pub struct Video {
-    pub id: String,
+    pub id: MaybeOwnedString,
     pub metadata: VideoMetadata,
-    pub path: PathBuf,
+    pub path: MaybeOwnedPath,
 }
 
 #[derive(Default)]
 pub struct VideoMetadata {
-    pub title: String,
+    pub title: MaybeOwnedString,
 
-    pub album: String,
-    pub artists: Vec<String>,
-    pub genres: Vec<String>,
+    pub album: MaybeOwnedString,
+    pub artists: Vec<MaybeOwnedString>,
+    pub genres: Vec<MaybeOwnedString>,
 }
 
 #[derive(Default)]
 pub struct Playlist {
-    pub id: String,
+    pub id: MaybeOwnedString,
     pub metadata: PlaylistMetadata,
     pub videos: Vec<Video>,
 }
 
 #[derive(Default)]
 pub struct PlaylistMetadata {
-    pub title: String,
+    pub title: MaybeOwnedString,
 }
 
 

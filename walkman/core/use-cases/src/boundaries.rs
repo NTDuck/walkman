@@ -1,6 +1,6 @@
 use async_trait::async_trait;
 
-use crate::gateways::{PlaylistDownloadEvent, VideoDownloadEvent};
+use crate::{gateways::{PlaylistDownloadEvent, VideoDownloadEvent}, utils::aliases::MaybeOwnedString};
 
 #[async_trait]
 pub trait DownloadVideoInputBoundary {
@@ -8,12 +8,12 @@ pub trait DownloadVideoInputBoundary {
 }
 
 pub struct DownloadVideoRequestModel {
-    pub url: String,
+    pub url: MaybeOwnedString,
 }
 
 #[async_trait]
 pub trait DownloadVideoOutputBoundary: Send + Sync {
-    async fn update(&self, event: VideoDownloadEvent);
+    async fn on_video_event(&self, event: &VideoDownloadEvent);
 }
 
 #[async_trait]
@@ -22,10 +22,11 @@ pub trait DownloadPlaylistInputBoundary {
 }
 
 pub struct DownloadPlaylistRequestModel {
-    pub url: String,
+    pub url: MaybeOwnedString,
 }
 
 #[async_trait]
 pub trait DownloadPlaylistOutputBoundary: Send + Sync {
-    async fn update(&self, event: PlaylistDownloadEvent);
+    async fn on_playlist_event(&self, event: &PlaylistDownloadEvent);
+    async fn on_video_event(&self, event: &VideoDownloadEvent);
 }
