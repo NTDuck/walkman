@@ -1,11 +1,13 @@
 use std::path::PathBuf;
 
+#[derive(Default)]
 pub struct Video {
     pub id: String,
     pub metadata: VideoMetadata,
     pub path: PathBuf,
 }
 
+#[derive(Default)]
 pub struct VideoMetadata {
     pub title: String,
 
@@ -14,12 +16,14 @@ pub struct VideoMetadata {
     pub genres: Vec<String>,
 }
 
+#[derive(Default)]
 pub struct Playlist {
     pub id: String,
     pub metadata: PlaylistMetadata,
     pub videos: Vec<Video>,
 }
 
+#[derive(Default)]
 pub struct PlaylistMetadata {
     pub title: String,
 }

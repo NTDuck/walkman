@@ -217,7 +217,9 @@ dependencies = [
 name = "infrastructures"
 version = "0.1.0"
 dependencies = [
+ "async-stream",
  "async-trait",
+ "domain",
  "lofty",
  "use-cases",
 ]

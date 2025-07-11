@@ -11,6 +11,7 @@ pub trait Downloader: Send + Sync {
 
 pub type Stream<T> = Pin<Box<dyn futures_core::Stream<Item = T> + Send>>;
 
+#[derive(Default)]
 pub struct VideoDownloadSnapshot {
     pub percentage: u8,
     pub eta: std::time::Duration,
@@ -19,6 +20,7 @@ pub struct VideoDownloadSnapshot {
 }
 
 // TODO consult docs for exact lim
+#[derive(Default)]
 pub struct PlaylistDownloadSnapshot {
     pub downloaded: usize,
     pub total: usize,
