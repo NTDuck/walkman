@@ -7,15 +7,16 @@ repository.workspace = true
 publish.workspace = true
 
 [dependencies]
-async-trait = { workspace = true }
+domain = { path = "../domain" }
+
 async-stream = { workspace = true }
-futures-core = "0.3.31"
-futures-util = "0.3.31"
+async-trait = { workspace = true }
+futures-core = { workspace = true }
+futures-util = { workspace = true }
+rayon = { workspace = true }
 tokio = { workspace = true, features = ["rt"] }
 tracing = { workspace = true }
 triomphe = { workspace = true }
-
-domain = { path = "../domain" }
 
 [lints]
 workspace = true

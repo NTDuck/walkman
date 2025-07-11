@@ -1,6 +1,6 @@
 use async_trait::async_trait;
 
-use crate::gateways::{PlaylistDownloadSnapshot, VideoDownloadSnapshot};
+use crate::gateways::{PlaylistDownloadEvent, VideoDownloadEvent};
 
 #[async_trait]
 pub trait DownloadVideoInputBoundary {
@@ -13,9 +13,7 @@ pub struct DownloadVideoRequestModel {
 
 #[async_trait]
 pub trait DownloadVideoOutputBoundary: Send + Sync {
-    async fn refresh(&self);
-    async fn update(&self, snapshot: VideoDownloadSnapshot);
-    async fn terminate(&self);
+    async fn update(&self, event: VideoDownloadEvent);
 }
 
 #[async_trait]
@@ -29,6 +27,5 @@ pub struct DownloadPlaylistRequestModel {
 
 #[async_trait]
 pub trait DownloadPlaylistOutputBoundary: Send + Sync {
-    async fn update(&self, snapshot: PlaylistDownloadSnapshot);
-    async fn terminate(&self);
+    async fn update(&self, event: PlaylistDownloadEvent);
 }

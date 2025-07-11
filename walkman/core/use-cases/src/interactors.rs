@@ -4,13 +4,14 @@ use tokio::spawn;
 use tracing::error;
 use triomphe::Arc;
 
-use crate::{boundaries::{DownloadPlaylistInputBoundary, DownloadPlaylistOutputBoundary, DownloadPlaylistRequestModel, DownloadVideoOutputBoundary}, gateways::Downloader};
+use crate::{boundaries::{DownloadPlaylistInputBoundary, DownloadPlaylistOutputBoundary, DownloadPlaylistRequestModel, DownloadVideoOutputBoundary}, gateways::{Downloader, MetadataWriter}};
 
 pub struct DownloadPlaylistInteractor {
     download_playlist_output_boundary: Arc<dyn DownloadPlaylistOutputBoundary>,
     download_video_output_boundary: Arc<dyn DownloadVideoOutputBoundary>,
 
     downloader: Arc<dyn Downloader>,
+    metadata_writer: Arc<dyn MetadataWriter>,
 }
 
 #[async_trait]
@@ -19,9 +20,13 @@ impl DownloadPlaylistInputBoundary for DownloadPlaylistInteractor {
         let url = model.url;
         
         match self.downloader.download_playlist(url).await {
-            Ok((_, playlist_snapshots, video_snapshots)) => {
+            Ok((playlist, playlist_snapshots, video_snapshots)) => {
                 let download_playlist_output_boundary = self.download_playlist_output_boundary.clone();
                 let download_video_output_boundary = self.download_video_output_boundary.clone();
+
+                spawn(async move {
+
+                });
 
                 spawn(async move {
                     pin_mut!(playlist_snapshots);
