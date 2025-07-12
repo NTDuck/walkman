@@ -25,32 +25,3 @@ pub struct Playlist {
 pub struct PlaylistMetadata {
     pub title: MaybeOwnedString,
 }
-
-
-/*
-Options:
---no-abort-on-error
---no-plugin-dirs
---flat-playlist
---color no_color
---min-filesize ???
---max-filesize 44.6M
-
-Video only:
---no-playlist
-
-Playlist only:
---yes-playlist
-
-Update:
---download-archive [xxx] (will be a file in the current dir)
---no-break-on-existing
-
-
-Initial check-log-stuff:
---dump-user-agent: 
-
-Consider:
-- skip livestreams.
-
-*/

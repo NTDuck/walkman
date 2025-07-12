@@ -1,4 +1,4 @@
-use std::{process::ExitCode, time::Duration};
+use std::process::ExitCode;
 
 use async_trait::async_trait;
 use domain::{Playlist, Video};
@@ -15,9 +15,10 @@ pub trait Downloader: Send + Sync {
 pub enum VideoDownloadEvent {
     Downloading {
         percentage: u8,
-        eta: Duration,
+
+        eta: MaybeOwnedString,
         size: MaybeOwnedString,
-        rate: MaybeOwnedString,
+        speed: MaybeOwnedString,
     },
     Completed(Video),
     Failed(ExitCode),
