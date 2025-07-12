@@ -5,32 +5,65 @@ use std::{io::{BufRead, BufReader}, path::PathBuf, process::{Command, ExitCode, 
 use async_stream::stream;
 use async_trait::async_trait;
 use domain::{Video, VideoMetadata};
+use indicatif::{ProgressBar, ProgressStyle};
 use once_cell::sync::Lazy;
 use regex::Regex;
 use use_cases::{boundaries::{DownloadPlaylistOutputBoundary, DownloadVideoOutputBoundary}, gateways::{Downloader, MetadataWriter, PlaylistDownloadEvent, VideoDownloadEvent}};
 
 use crate::utils::aliases::{BoxedStream, MaybeOwnedPath, MaybeOwnedString};
 
-pub struct DownloadVideoProgressBar;
+pub struct DownloadVideoView {
+    progress_bar: ProgressBar,
+}
 
-#[async_trait]
-impl DownloadVideoOutputBoundary for DownloadVideoProgressBar {
-    async fn update(&self, _event: &VideoDownloadEvent) {
-
+impl DownloadVideoView {
+    pub fn new() -> Self {
+        Self {
+            progress_bar: ProgressBar::new(100)
+                .with_style(ProgressStyle::with_template("{prefix} [{bar:44}] {msg}")
+                    .unwrap()
+                    .progress_chars("█░ ")),
+        }
     }
 }
 
-pub struct DownloadPlaylistAndVideoProgressBar;
+#[async_trait]
+impl DownloadVideoOutputBoundary for DownloadVideoView {
+    async fn update(&self, event: &VideoDownloadEvent) {
+        use VideoDownloadEvent::*;
+
+        match event {
+            Downloading {
+                percentage,
+                eta,
+                size,
+                speed,
+            } => {
+                self.progress_bar.set_position(*percentage as u64);
+                self.progress_bar.set_prefix(format!("[{speed}\t{eta}]"));
+                self.progress_bar.set_message(format!("[{percentage} of {size}]"));
+            },
+            Completed(video) => {
+                self.progress_bar.finish_with_message(format!("{}", video.metadata.title));
+            },
+            Failed(error) => {
+                self.progress_bar.abandon_with_message(format!("{:?}", error));
+            },
+        }
+    }
+}
+
+pub struct DownloadPlaylistView;
 
 #[async_trait]
-impl DownloadVideoOutputBoundary for DownloadPlaylistAndVideoProgressBar {
+impl DownloadVideoOutputBoundary for DownloadPlaylistView {
     async fn update(&self, _event: &VideoDownloadEvent) {
         
     }
 }
 
 #[async_trait]
-impl DownloadPlaylistOutputBoundary for DownloadPlaylistAndVideoProgressBar {
+impl DownloadPlaylistOutputBoundary for DownloadPlaylistView {
     async fn update(&self, _event: &PlaylistDownloadEvent) {
 
     }
