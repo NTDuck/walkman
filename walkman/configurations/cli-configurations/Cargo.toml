@@ -12,7 +12,6 @@ use-cases = { path = "../../core/use-cases" }
 infrastructures = { path = "../../infrastructures" }
 
 clap = "4.5.41"
-triomphe = { workspace = true }
 tokio = { workspace = true, features = ["rt", "rt-multi-thread", "macros"] }
 
 [lints]

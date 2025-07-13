@@ -2,3 +2,7 @@
 run-cli = "run -p cli-configurations"
 lint-rustfmt = "fmt --all"
 lint-clippy = "clippy --fix --workspace --all-targets --all-features --allow-dirty"
+
+[env]
+# https://stackoverflow.com/a/78606410
+CARGO_WORKSPACE_DIR = { value = "", relative = true }

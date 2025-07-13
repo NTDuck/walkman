@@ -41,7 +41,7 @@ impl DownloadVideoOutputBoundary for DownloadVideoView {
             } => {
                 self.progress_bar.set_position(*percentage as u64);
                 self.progress_bar.set_prefix(format!("[{speed}\t{eta}]"));
-                self.progress_bar.set_message(format!("[{percentage} of {size}]"));
+                self.progress_bar.set_message(format!("[{percentage}% of {size}]"));
             },
             Completed(video) => {
                 self.progress_bar.finish_with_message(format!("{}", video.metadata.title));
@@ -88,19 +88,16 @@ impl Downloader for YtDlpDownloader {
                 &*url,
                 "--paths", &directory.to_string_lossy(),
                 "--format", "bestaudio",
+                "--audio-format", "mp3",
                 "--output", "\"%(title)s.%(ext)s\"",
                 "--quiet",
                 "--newline",
                 "--no-playlist",
-                "--no-abort-on-error",
-                "--no-plugin-dirs",
                 "--progress",
-                "--progress-template", "\"[downloading]%(progress._percent_str)s;%(progress._eta_str)s;%(progress._total_bytes_str)s;%(progress._speed_str)s\"",
-                "--exec", "\"echo [completed]%(id)s;%(title)s;%(album)s;%(artist)s;%(genre)s\"",
+                "--progress-template", "\"[video-downloading]%(progress._percent_str)s;%(progress._eta_str)s;%(progress._total_bytes_str)s;%(progress._speed_str)s\"",
+                "--exec", "\"echo [video-completed]%(id)s;%(title)s;%(album)s;%(artist)s;%(genre)s\"",
                 // "--flat-playlist",
                 "--color", "no_color",
-                // "--min-filesize",
-                "--max-filesize", "44.6M",
             ])
             // Merge stderr into stdout
             .stderr(Stdio::piped())
@@ -127,11 +124,11 @@ impl Downloader for YtDlpDownloader {
         let reader = BufReader::new(stdout);
 
         static DOWNLOADING_REGEX: Lazy<Regex> = Lazy::new(|| Regex::new(
-            r"\[downloading\](?P<percent>\d+)\.\d+%;(?P<eta>[^;]+);(?P<size>[^;]+);(?P<speed>[^\r\n]+)"
+            r"\[video-downloading\](?P<percent>\d+)\.\d+%;(?P<eta>[^;]+);(?P<size>[^;]+);(?P<speed>[^\r\n]+)"
         ).unwrap());
 
         static COMPLETED_REGEX: Lazy<Regex> = Lazy::new(|| Regex::new(
-            r"\[completed\](?P<filepath>[^;]+);(?P<id>[^;]+);(?P<title>[^;]+);(?P<album>[^;]+);(?P<artist>[^;]+);(?P<genre>[^\r\n]+)"
+            r"\[video-completed\](?P<filepath>[^;]+);(?P<id>[^;]+);(?P<title>[^;]+);(?P<album>[^;]+);(?P<artist>[^;]+);(?P<genre>[^\r\n]+)"
         ).unwrap());
 
         Box::pin(stream! {
@@ -184,7 +181,7 @@ impl Downloader for YtDlpDownloader {
 impl YtDlpDownloader {
     fn parse_multivalued_attr(attrs: MaybeOwnedString) -> Vec<MaybeOwnedString> {
         if attrs == "NA" {
-            vec![]
+            Vec::new()
         } else {
             attrs.split(",")
                 .map(|attr| attr.trim().to_string())

@@ -10,10 +10,10 @@ publish.workspace = true
 domain = { path = "../domain" }
 
 async-trait = { workspace = true }
+derive-new = { workspace = true }
 futures-core = { workspace = true }
 futures-util = { workspace = true }
 tokio = { workspace = true, features = ["rt"] }
-triomphe = { workspace = true }
 
 [lints]
 workspace = true

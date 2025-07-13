@@ -1,10 +1,13 @@
+use std::sync::Arc;
+
 use async_trait::async_trait;
+use derive_new::new;
 use futures_util::{pin_mut, StreamExt};
-use tokio::spawn;
-use triomphe::Arc;
+use tokio::{join, spawn};
 
 use crate::{boundaries::{DownloadPlaylistInputBoundary, DownloadPlaylistOutputBoundary, DownloadPlaylistRequestModel, DownloadVideoInputBoundary, DownloadVideoOutputBoundary, DownloadVideoRequestModel}, gateways::{Downloader, MetadataWriter, PlaylistDownloadEvent, VideoDownloadEvent}};
 
+#[derive(new)]
 pub struct DownloadVideoInteractor {
     output_boundary: Arc<dyn DownloadVideoOutputBoundary>,
 
@@ -38,6 +41,7 @@ impl DownloadVideoInputBoundary for DownloadVideoInteractor {
     }
 }
 
+#[derive(new)]
 pub struct DownloadPlaylistInteractor {
     output_boundary: Arc<dyn DownloadPlaylistOutputBoundary>,
 
@@ -54,7 +58,7 @@ impl DownloadPlaylistInputBoundary for DownloadPlaylistInteractor {
         let output_boundary = self.output_boundary.clone();
         let metadata_writer = self.metadata_writer.clone();
 
-        spawn(async move {
+        let playlist_handle = spawn(async move {
             pin_mut!(playlist_events);
 
             while let Some(event) = playlist_events.next().await {
@@ -71,12 +75,14 @@ impl DownloadPlaylistInputBoundary for DownloadPlaylistInteractor {
 
         let output_boundary = self.output_boundary.clone();
 
-        spawn(async move {
+        let video_handle = spawn(async move {
             pin_mut!(video_events);
 
             while let Some(event) = video_events.next().await {
                 DownloadVideoOutputBoundary::update(&*output_boundary, &event).await;
             }
         });
+
+        let _ = join!(playlist_handle, video_handle);
     }
 }
