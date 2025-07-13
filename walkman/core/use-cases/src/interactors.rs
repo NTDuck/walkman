@@ -24,7 +24,7 @@ impl DownloadVideoInputBoundary for DownloadVideoInteractor {
         let output_boundary = self.output_boundary.clone();
         let metadata_writer = self.metadata_writer.clone();
 
-        spawn(async move {
+        let handle = spawn(async move {
             pin_mut!(video_events);
 
             while let Some(event) = video_events.next().await {
@@ -38,6 +38,8 @@ impl DownloadVideoInputBoundary for DownloadVideoInteractor {
                 }
             }
         });
+
+        let _ = handle.await;
     }
 }
 
