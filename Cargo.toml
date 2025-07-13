@@ -19,9 +19,7 @@ async-stream = "0.3.6"
 async-trait = "0.1.88"
 futures-core = "0.3.31"
 futures-util = "0.3.31"
-# rayon = "1.10.0"
 tokio = "1.46.1"
-tracing = "0.1.41"
 triomphe = "0.1.14"
 
 # Crates that we choose to marry

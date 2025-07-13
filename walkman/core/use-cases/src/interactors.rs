@@ -15,9 +15,8 @@ pub struct DownloadVideoInteractor {
 #[async_trait]
 impl DownloadVideoInputBoundary for DownloadVideoInteractor {
     async fn apply(&self, model: DownloadVideoRequestModel) {
-        let url = model.url;
-
-        let video_events = self.downloader.download_video(url).await;
+        let DownloadVideoRequestModel { url, directory } = model;
+        let video_events = self.downloader.download_video(url, directory).await;
 
         let output_boundary = self.output_boundary.clone();
         let metadata_writer = self.metadata_writer.clone();
@@ -49,9 +48,8 @@ pub struct DownloadPlaylistInteractor {
 #[async_trait]
 impl DownloadPlaylistInputBoundary for DownloadPlaylistInteractor {
     async fn apply(&self, model: DownloadPlaylistRequestModel) {
-        let url = model.url;
-
-        let (playlist_events, video_events) = self.downloader.download_playlist(url).await;
+        let DownloadPlaylistRequestModel { url, directory } = model;
+        let (playlist_events, video_events) = self.downloader.download_playlist(url, directory).await;
 
         let output_boundary = self.output_boundary.clone();
         let metadata_writer = self.metadata_writer.clone();

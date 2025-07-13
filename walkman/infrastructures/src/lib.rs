@@ -69,34 +69,26 @@ impl DownloadPlaylistOutputBoundary for DownloadPlaylistView {
     }
 }
 
-pub struct YtDlpDownloader {
-    configurations: YtDlpDownloaderConfigurations,
-}
-
-pub struct YtDlpDownloaderConfigurations {
-    directory: MaybeOwnedPath,
-}
+pub struct YtDlpDownloader;
 
 impl YtDlpDownloader {
-    pub fn new(configurations: YtDlpDownloaderConfigurations) -> Self {
-        Self {
-            configurations,
-        }
+    pub fn new() -> Self {
+        Self
     }
 }
 
 #[async_trait]
 impl Downloader for YtDlpDownloader {
-    async fn download_video(&self, url: MaybeOwnedString) -> BoxedStream<VideoDownloadEvent> {
+    async fn download_video(&self, url: MaybeOwnedString, directory: MaybeOwnedPath) -> BoxedStream<VideoDownloadEvent> {
         use VideoDownloadEvent::*;
 
         let mut command = Command::new("yt-dlp");
         command
             .args([
                 &*url,
+                "--paths", &directory.to_string_lossy(),
                 "--format", "bestaudio",
                 "--output", "\"%(title)s.%(ext)s\"",
-                "--paths", &self.configurations.directory.to_string_lossy(),
                 "--quiet",
                 "--newline",
                 "--no-playlist",
@@ -177,7 +169,7 @@ impl Downloader for YtDlpDownloader {
         })
     }
 
-    async fn download_playlist(&self, _url: MaybeOwnedString) -> (BoxedStream<PlaylistDownloadEvent>, BoxedStream<VideoDownloadEvent>) {
+    async fn download_playlist(&self, _url: MaybeOwnedString, _directory: MaybeOwnedPath) -> (BoxedStream<PlaylistDownloadEvent>, BoxedStream<VideoDownloadEvent>) {
         (
             Box::pin(stream! {
                 yield PlaylistDownloadEvent::Failed(Default::default());
@@ -233,6 +225,12 @@ Consider:
 */
 
 pub struct LoftyMetadataWriter;
+
+impl LoftyMetadataWriter {
+    pub fn new() -> Self {
+        Self
+    }
+}
 
 #[async_trait]
 impl MetadataWriter for LoftyMetadataWriter {

@@ -4,12 +4,12 @@ use async_trait::async_trait;
 use domain::{Playlist, Video};
 use futures_util::{stream::FuturesUnordered, StreamExt};
 
-use crate::utils::aliases::{BoxedStream, MaybeOwnedString};
+use crate::utils::aliases::{BoxedStream, MaybeOwnedPath, MaybeOwnedString};
 
 #[async_trait]
 pub trait Downloader: Send + Sync {
-    async fn download_video(&self, url: MaybeOwnedString) -> BoxedStream<VideoDownloadEvent>;
-    async fn download_playlist(&self, url: MaybeOwnedString) -> (BoxedStream<PlaylistDownloadEvent>, BoxedStream<VideoDownloadEvent>);
+    async fn download_video(&self, url: MaybeOwnedString, directory: MaybeOwnedPath) -> BoxedStream<VideoDownloadEvent>;
+    async fn download_playlist(&self, url: MaybeOwnedString, directory: MaybeOwnedPath) -> (BoxedStream<PlaylistDownloadEvent>, BoxedStream<VideoDownloadEvent>);
 }
 
 pub enum VideoDownloadEvent {
