@@ -19,27 +19,24 @@ pub struct DownloadVideoInteractor {
 impl DownloadVideoInputBoundary for DownloadVideoInteractor {
     async fn apply(&self, model: DownloadVideoRequestModel) {
         let DownloadVideoRequestModel { url, directory } = model;
+
         let video_events = self.downloader.download_video(url, directory).await;
 
         let output_boundary = self.output_boundary.clone();
         let metadata_writer = self.metadata_writer.clone();
 
-        let handle = spawn(async move {
-            pin_mut!(video_events);
+        pin_mut!(video_events);
 
-            while let Some(event) = video_events.next().await {
-                output_boundary.update(&event).await;
+        while let Some(event) = video_events.next().await {
+            output_boundary.update(&event).await;
 
-                match event {
-                    VideoDownloadEvent::Completed(video) => {
-                        metadata_writer.write_video(&video).await;
-                    },
-                    _ => {},
-                }
+            match event {
+                VideoDownloadEvent::Completed(video) => {
+                    metadata_writer.write_video(&video).await;
+                },
+                _ => {},
             }
-        });
-
-        let _ = handle.await;
+        }
     }
 }
 

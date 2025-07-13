@@ -1,6 +1,6 @@
-mod utils;
+pub(crate) mod utils;
 
-use std::{io::{BufRead, BufReader}, path::PathBuf, process::{Command, ExitCode, Stdio}};
+use std::{io::{BufRead, BufReader}, path::PathBuf, process::{Command, Stdio}};
 
 use async_stream::stream;
 use async_trait::async_trait;
@@ -88,15 +88,15 @@ impl Downloader for YtDlpDownloader {
                 &*url,
                 "--paths", &directory.to_string_lossy(),
                 "--format", "bestaudio",
+                "--extract-audio",
                 "--audio-format", "mp3",
-                "--output", "\"%(title)s.%(ext)s\"",
+                "--output", "%(title)s.%(ext)s",
                 "--quiet",
                 "--newline",
                 "--no-playlist",
                 "--progress",
-                "--progress-template", "\"[video-downloading]%(progress._percent_str)s;%(progress._eta_str)s;%(progress._total_bytes_str)s;%(progress._speed_str)s\"",
-                "--exec", "\"echo [video-completed]%(id)s;%(title)s;%(album)s;%(artist)s;%(genre)s\"",
-                // "--flat-playlist",
+                "--progress-template", "[video-downloading]%(progress._percent_str)s;%(progress._eta_str)s;%(progress._total_bytes_str)s;%(progress._speed_str)s",
+                "--exec", "echo [video-completed]%(filepath)s;%(id)s;%(title)s;%(album)s;%(artist)s;%(genre)s",
                 "--color", "no_color",
             ])
             // Merge stderr into stdout
@@ -107,7 +107,7 @@ impl Downloader for YtDlpDownloader {
             Ok(process) => process,
             Err(_) => {
                 return Box::pin(stream! {
-                    yield Failed(ExitCode::FAILURE);
+                    yield Failed(format!("Error: Failed to execute command `{:?}`", command).into());
                 });
             },
         };
@@ -116,7 +116,7 @@ impl Downloader for YtDlpDownloader {
             Some(stdout) => stdout,
             None => {
                 return Box::pin(stream! {
-                    yield Failed(ExitCode::FAILURE);
+                    yield Failed(format!("Error: Failed to capture stdout of command `{:?}`", command).into());
                 });
             },
         };
@@ -124,7 +124,7 @@ impl Downloader for YtDlpDownloader {
         let reader = BufReader::new(stdout);
 
         static DOWNLOADING_REGEX: Lazy<Regex> = Lazy::new(|| Regex::new(
-            r"\[video-downloading\](?P<percent>\d+)\.\d+%;(?P<eta>[^;]+);(?P<size>[^;]+);(?P<speed>[^\r\n]+)"
+            r"\[video-downloading\]\s*(?P<percent>\d+)(?:\.\d+)?%;(?P<eta>[^;]+);\s*(?P<size>[^;]+);\s*(?P<speed>[^\r\n]+)"
         ).unwrap());
 
         static COMPLETED_REGEX: Lazy<Regex> = Lazy::new(|| Regex::new(
@@ -135,8 +135,8 @@ impl Downloader for YtDlpDownloader {
             for line in reader.lines() {
                 let line = match line {
                     Ok(line) => line,
-                    Err(_) => {
-                        yield Failed(ExitCode::FAILURE);
+                    Err(error) => {
+                        yield Failed(format!("Error: `{}`", error).into());
                         continue;
                     }
                 };
@@ -154,13 +154,13 @@ impl Downloader for YtDlpDownloader {
                         metadata: VideoMetadata {
                             title: captures["title"].trim().to_string().into(),
                             album: captures["album"].trim().to_string().into(),
-                            artists: Self::parse_multivalued_attr(captures["artists"].trim().to_string().into()),
-                            genres: Self::parse_multivalued_attr(captures["genres"].trim().to_string().into()),
+                            artists: Self::parse_multivalued_attr(captures["artist"].trim().to_string().into()),
+                            genres: Self::parse_multivalued_attr(captures["genre"].trim().to_string().into()),
                         },
                         path: MaybeOwnedPath::Owned(PathBuf::from(captures["filepath"].trim())),
                     });
                 } else {
-                    yield Failed(ExitCode::FAILURE);
+                    yield Failed(format!("Error: Failed to regex-capture line `{}`", line).into());
                 }
             }
         })

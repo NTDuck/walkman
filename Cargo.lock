@@ -182,6 +182,8 @@ dependencies = [
  "clap",
  "domain",
  "infrastructures",
+ "once_cell",
+ "regex",
  "tokio",
  "use-cases",
 ]

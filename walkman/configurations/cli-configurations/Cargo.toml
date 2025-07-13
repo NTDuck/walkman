@@ -14,5 +14,8 @@ infrastructures = { path = "../../infrastructures" }
 clap = "4.5.41"
 tokio = { workspace = true, features = ["rt", "rt-multi-thread", "macros"] }
 
+once_cell = "*"
+regex = "*"
+
 [lints]
 workspace = true

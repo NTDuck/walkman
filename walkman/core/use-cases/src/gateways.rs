@@ -1,5 +1,3 @@
-use std::process::ExitCode;
-
 use async_trait::async_trait;
 use domain::{Playlist, Video};
 use futures_util::{stream::FuturesUnordered, StreamExt};
@@ -12,6 +10,7 @@ pub trait Downloader: Send + Sync {
     async fn download_playlist(&self, url: MaybeOwnedString, directory: MaybeOwnedPath) -> (BoxedStream<PlaylistDownloadEvent>, BoxedStream<VideoDownloadEvent>);
 }
 
+#[derive(Debug)]
 pub enum VideoDownloadEvent {
     Downloading {
         percentage: u8,
@@ -21,9 +20,10 @@ pub enum VideoDownloadEvent {
         speed: MaybeOwnedString,
     },
     Completed(Video),
-    Failed(ExitCode),
+    Failed(MaybeOwnedString),
 }
 
+#[derive(Debug)]
 pub enum PlaylistDownloadEvent {
     Downloading {
         video: Video,
@@ -32,7 +32,7 @@ pub enum PlaylistDownloadEvent {
         total: usize,
     },
     Completed(Playlist),
-    Failed(ExitCode),
+    Failed(MaybeOwnedString),
 }
 
 #[async_trait]
