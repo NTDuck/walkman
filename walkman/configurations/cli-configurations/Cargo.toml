@@ -16,6 +16,7 @@ tokio = { workspace = true, features = ["rt", "rt-multi-thread", "macros"] }
 
 once_cell = "*"
 regex = "*"
+lofty = "*"
 
 [lints]
 workspace = true

@@ -9,7 +9,7 @@ pub struct Video {
     pub path: MaybeOwnedPath,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct VideoMetadata {
     pub title: MaybeOwnedString,
 

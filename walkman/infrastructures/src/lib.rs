@@ -4,8 +4,8 @@ use std::{io::{BufRead, BufReader}, path::PathBuf, process::{Command, Stdio}};
 
 use async_stream::stream;
 use async_trait::async_trait;
+use derive_new::new;
 use domain::{Video, VideoMetadata};
-use indicatif::{ProgressBar, ProgressStyle};
 use once_cell::sync::Lazy;
 use regex::Regex;
 use use_cases::{boundaries::{DownloadPlaylistOutputBoundary, DownloadVideoOutputBoundary}, gateways::{Downloader, MetadataWriter, PlaylistDownloadEvent, VideoDownloadEvent}};
@@ -13,17 +13,23 @@ use use_cases::{boundaries::{DownloadPlaylistOutputBoundary, DownloadVideoOutput
 use crate::utils::aliases::{BoxedStream, MaybeOwnedPath, MaybeOwnedString};
 
 pub struct DownloadVideoView {
-    progress_bar: ProgressBar,
+    progress_bar: indicatif::ProgressBar,
 }
 
 impl DownloadVideoView {
     pub fn new() -> Self {
         Self {
-            progress_bar: ProgressBar::new(100)
-                .with_style(ProgressStyle::with_template("{prefix} [{bar:44}] {msg}")
-                    .unwrap()
+            progress_bar: indicatif::ProgressBar::new(100)
+                .with_style(indicatif::ProgressStyle::with_template("{prefix} [{bar:44}] {msg}")
+                    .expect("Error: Invalid progress bar template string")
                     .progress_chars("█░ ")),
         }
+    }
+}
+
+impl Default for DownloadVideoView {
+    fn default() -> Self {
+        Self::new()
     }
 }
 
@@ -69,13 +75,8 @@ impl DownloadPlaylistOutputBoundary for DownloadPlaylistView {
     }
 }
 
+#[derive(new)]
 pub struct YtDlpDownloader;
-
-impl YtDlpDownloader {
-    pub fn new() -> Self {
-        Self
-    }
-}
 
 #[async_trait]
 impl Downloader for YtDlpDownloader {
@@ -125,39 +126,51 @@ impl Downloader for YtDlpDownloader {
 
         static DOWNLOADING_REGEX: Lazy<Regex> = Lazy::new(|| Regex::new(
             r"\[video-downloading\]\s*(?P<percent>\d+)(?:\.\d+)?%;(?P<eta>[^;]+);\s*(?P<size>[^;]+);\s*(?P<speed>[^\r\n]+)"
-        ).unwrap());
+        ).expect("Error: Invalid regex string"));
 
         static COMPLETED_REGEX: Lazy<Regex> = Lazy::new(|| Regex::new(
             r"\[video-completed\](?P<filepath>[^;]+);(?P<id>[^;]+);(?P<title>[^;]+);(?P<album>[^;]+);(?P<artist>[^;]+);(?P<genre>[^\r\n]+)"
-        ).unwrap());
+        ).expect("Error: Invalid regex string"));
 
         Box::pin(stream! {
             for line in reader.lines() {
                 let line = match line {
                     Ok(line) => line,
                     Err(error) => {
-                        yield Failed(format!("Error: `{}`", error).into());
+                        yield Failed(format!("Error: Failed to read line with error `{}`", error).into());
                         continue;
                     }
                 };
 
                 if let Some(captures) = DOWNLOADING_REGEX.captures(&line) {
                     yield Downloading {
-                        percentage: captures["percent"].parse().unwrap(),
-                        eta: captures["eta"].trim().to_string().into(),
-                        size: captures["size"].trim().to_string().into(),
-                        speed: captures["speed"].trim().to_string().into(),
+                        percentage: Self::parse_attr(&captures["percent"])
+                            .expect(&format!("Error: Failed to regex-capture `percent` from line `{}`", line))
+                            .parse()
+                            .expect(&format!("Error: Failed to parse `u8` from regex-captured string")),
+                        eta: Self::parse_attr(&captures["eta"])
+                            .expect(&format!("Error: Failed to regex-capture `eta` from line `{}`", line)),
+                        size: Self::parse_attr(&captures["size"])
+                            .expect(&format!("Error: Failed to regex-capture `size` from line `{}`", line)),
+                        speed: Self::parse_attr(&captures["speed"])
+                            .expect(&format!("Error: Failed to regex-capture `speed` from line `{}`", line)),
                     };
                 } else if let Some(captures) = COMPLETED_REGEX.captures(&line) {
                     yield Completed(Video {
-                        id: captures["id"].trim().to_string().into(),
+                        id: Self::parse_attr(&captures["id"])
+                                .expect(&format!("Error: Failed to regex-capture `id` from line `{}`", line)),
                         metadata: VideoMetadata {
-                            title: captures["title"].trim().to_string().into(),
-                            album: captures["album"].trim().to_string().into(),
-                            artists: Self::parse_multivalued_attr(captures["artist"].trim().to_string().into()),
-                            genres: Self::parse_multivalued_attr(captures["genre"].trim().to_string().into()),
+                            title: Self::parse_attr(&captures["title"])
+                                .expect(&format!("Error: Failed to regex-capture `title` from `{}`", line)),
+                            album: Self::parse_attr(&captures["album"])
+                                .expect(&format!("Error: Failed to regex-capture `album` from `{}`", line)),
+                            artists: Self::parse_multivalued_attr(&captures["artist"]),
+                            genres: Self::parse_multivalued_attr(&captures["genre"]),
                         },
-                        path: MaybeOwnedPath::Owned(PathBuf::from(captures["filepath"].trim())),
+                        path: MaybeOwnedPath::Owned(PathBuf::from(
+                            &*Self::parse_attr(&captures["filepath"])
+                                .expect(&format!("Error: Failed to regex-capture `filepath` from line `{}`", line))
+                        )),
                     });
                 } else {
                     yield Failed(format!("Error: Failed to regex-capture line `{}`", line).into());
@@ -179,16 +192,28 @@ impl Downloader for YtDlpDownloader {
 }
 
 impl YtDlpDownloader {
-    fn parse_multivalued_attr(attrs: MaybeOwnedString) -> Vec<MaybeOwnedString> {
-        if attrs == "NA" {
-            Vec::new()
+    fn parse_attr<'a>(captured: &'a str) -> Option<MaybeOwnedString> {
+        let captured = Self::normalize(captured);
+
+        if captured == "NA" {
+            None
         } else {
-            attrs.split(",")
-                .map(|attr| attr.trim().to_string())
-                .filter(|attr| !attr.is_empty())
-                .map(Into::into)
-                .collect()
+            Some(captured.to_owned().into())
         }
+    }
+
+    fn parse_multivalued_attr<'a>(captured: &'a str) -> Vec<MaybeOwnedString> {
+        match Self::parse_attr(captured) {
+            Some(attrs) => attrs.split(',')
+                .map(|attr| Self::normalize(attr))
+                .map(|attr| attr.to_owned().into())
+                .collect(),
+            None => Vec::new(),
+        }
+    }
+
+    fn normalize<'a>(captured: &'a str) -> &'a str {
+        captured.trim()
     }
 }
 
@@ -221,17 +246,58 @@ Consider:
 
 */
 
-pub struct LoftyMetadataWriter;
+#[derive(new)]
+pub struct GenericMetadataWriter;
 
-impl LoftyMetadataWriter {
-    pub fn new() -> Self {
-        Self
+#[async_trait]
+impl MetadataWriter for GenericMetadataWriter {
+    async fn write_video(&self, video: &Video) {
+        use lofty::prelude::*;
+
+        let mut file = lofty::read_from_path(video.path.clone())
+            .expect(&format!("Error: Failed to read file `{:?}`", video.path));
+
+        let tag = match file.primary_tag_mut() {
+            Some(tag) => tag,
+            None => match file.first_tag_mut() {
+                Some(tag) => tag,
+                None => {
+                    file.insert_tag(lofty::tag::Tag::new(file.primary_tag_type()));
+                    file.primary_tag_mut().unwrap()
+                },
+            },
+        };
+        
+        let metadata = video.metadata.clone();
+
+        tag.set_title(metadata.title.into_owned());
+        tag.set_album(metadata.album.into_owned());
+        tag.set_artist(metadata.artists.join(", "));
+        tag.set_genre(metadata.genres.join(", "));
+
+        tag.save_to_path(video.path.clone(), lofty::config::WriteOptions::default().respect_read_only(false))
+            .expect(&format!("Error: Failed to write to file `{:?}`", video.path));
     }
 }
 
+#[derive(new)]
+pub struct Id3MetadataWriter;
+
 #[async_trait]
-impl MetadataWriter for LoftyMetadataWriter {
-    async fn write_video(&self, _video: &Video) {
-        
+impl MetadataWriter for Id3MetadataWriter {
+    async fn write_video(&self, video: &Video) {
+        use id3::TagLike;
+
+        let mut tag = id3::Tag::new();
+
+        let metadata = video.metadata.clone();
+
+        tag.set_title(metadata.title);
+        tag.set_album(metadata.album);
+        tag.set_artist(metadata.artists.join(", "));
+        tag.set_genre(metadata.genres.join(", "));
+
+        tag.write_to_path(video.path.clone(), id3::Version::Id3v23)
+            .expect(&format!("Error: Failed to write to file `{:?}`", video.path));
     }
 }

@@ -3,7 +3,7 @@ mod utils;
 use std::{path::PathBuf, sync::Arc};
 
 use clap::{value_parser, Arg, Command};
-use infrastructures::{DownloadVideoView, LoftyMetadataWriter, YtDlpDownloader};
+use infrastructures::{DownloadVideoView, Id3MetadataWriter, YtDlpDownloader};
 use use_cases::{boundaries::{DownloadVideoInputBoundary, DownloadVideoRequestModel}, interactors::DownloadVideoInteractor};
 
 use crate::utils::aliases::{MaybeOwnedPath, MaybeOwnedString};
@@ -13,7 +13,7 @@ use crate::utils::aliases::{MaybeOwnedPath, MaybeOwnedString};
 async fn main() {
     let download_video_view = Arc::new(DownloadVideoView::new());
     let downloader = Arc::new(YtDlpDownloader::new());
-    let metadata_writer = Arc::new(LoftyMetadataWriter::new());
+    let metadata_writer = Arc::new(Id3MetadataWriter::new());
 
     let download_video_interactor = DownloadVideoInteractor::new(
         download_video_view.clone(),
