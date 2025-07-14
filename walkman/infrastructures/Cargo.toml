@@ -10,6 +10,7 @@ publish.workspace = true
 domain = { path = "../core/domain" }
 use-cases = { path = "../core/use-cases" }
 
+anyhow = { workspace = true }
 async-stream = { workspace = true }
 async-trait = { workspace = true }
 futures-core = { workspace = true }

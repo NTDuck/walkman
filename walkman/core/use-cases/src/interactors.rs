@@ -1,42 +1,44 @@
-use std::sync::Arc;
+use ::std::sync::Arc;
 
-use async_trait::async_trait;
-use derive_new::new;
-use futures_util::{pin_mut, StreamExt};
-use tokio::{join, spawn};
+use ::async_trait::async_trait;
+use ::derive_new::new;
 
-use crate::{boundaries::{DownloadPlaylistInputBoundary, DownloadPlaylistOutputBoundary, DownloadPlaylistRequestModel, DownloadVideoInputBoundary, DownloadVideoOutputBoundary, DownloadVideoRequestModel}, gateways::{Downloader, MetadataWriter, PlaylistDownloadEvent, VideoDownloadEvent}};
+use crate::{boundaries::{DownloadPlaylistInputBoundary, DownloadPlaylistOutputBoundary, DownloadPlaylistRequestModel, DownloadVideoInputBoundary, DownloadVideoOutputBoundary, DownloadVideoRequestModel}, gateways::{Downloader, MetadataWriter, PlaylistDownloadEvent, VideoDownloadEvent}, utils::aliases::Fallible};
 
 #[derive(new)]
 pub struct DownloadVideoInteractor {
     output_boundary: Arc<dyn DownloadVideoOutputBoundary>,
 
     downloader: Arc<dyn Downloader>,
-    metadata_writer: Arc<dyn MetadataWriter>,   
+    metadata_writer: Arc<dyn MetadataWriter>,
 }
 
 #[async_trait]
 impl DownloadVideoInputBoundary for DownloadVideoInteractor {
-    async fn apply(&self, model: DownloadVideoRequestModel) {
+    async fn apply(&self, model: DownloadVideoRequestModel) -> Fallible<()> {
+        use ::futures_util::StreamExt as _;
+
         let DownloadVideoRequestModel { url, directory } = model;
 
-        let video_events = self.downloader.download_video(url, directory).await;
+        let video_events = self.downloader.download_video(url, directory).await?;
 
         let output_boundary = self.output_boundary.clone();
         let metadata_writer = self.metadata_writer.clone();
 
-        pin_mut!(video_events);
+        ::futures_util::pin_mut!(video_events);
 
         while let Some(event) = video_events.next().await {
-            output_boundary.update(&event).await;
+            output_boundary.update(&event).await?;
 
             match event {
                 VideoDownloadEvent::Completed(video) => {
-                    metadata_writer.write_video(&video).await;
+                    metadata_writer.write_video(&video).await?;
                 },
                 _ => {},
             }
         }
+
+        Ok(())
     }
 }
 
@@ -50,38 +52,46 @@ pub struct DownloadPlaylistInteractor {
 
 #[async_trait]
 impl DownloadPlaylistInputBoundary for DownloadPlaylistInteractor {
-    async fn apply(&self, model: DownloadPlaylistRequestModel) {
+    async fn apply(&self, model: DownloadPlaylistRequestModel) -> Fallible<()> {
+        use ::futures_util::StreamExt as _;
+
         let DownloadPlaylistRequestModel { url, directory } = model;
-        let (playlist_events, video_events) = self.downloader.download_playlist(url, directory).await;
+        let (playlist_events, video_events) = self.downloader.download_playlist(url, directory).await?;
 
         let output_boundary = self.output_boundary.clone();
         let metadata_writer = self.metadata_writer.clone();
 
-        let playlist_handle = spawn(async move {
-            pin_mut!(playlist_events);
+        let playlist_handle: tokio::task::JoinHandle<Fallible<()>> = tokio::spawn(async move {
+            ::futures_util::pin_mut!(playlist_events);
 
             while let Some(event) = playlist_events.next().await {
-                DownloadPlaylistOutputBoundary::update(&*output_boundary, &event).await;
+                DownloadPlaylistOutputBoundary::update(&*output_boundary, &event).await?;
 
                 match event {
                     PlaylistDownloadEvent::Completed(playlist) => {
-                        metadata_writer.write_playlist(&playlist).await;
+                        metadata_writer.write_playlist(&playlist).await?;
                     },
                     _ => {},
                 }
             }
+
+            Ok(())
         });
 
         let output_boundary = self.output_boundary.clone();
 
-        let video_handle = spawn(async move {
-            pin_mut!(video_events);
+        let video_handle: tokio::task::JoinHandle<Fallible<()>> = tokio::spawn(async move {
+            ::futures_util::pin_mut!(video_events);
 
             while let Some(event) = video_events.next().await {
-                DownloadVideoOutputBoundary::update(&*output_boundary, &event).await;
+                DownloadVideoOutputBoundary::update(&*output_boundary, &event).await?;
             }
+
+            Ok(())
         });
 
-        let _ = join!(playlist_handle, video_handle);
+        let _ = tokio::try_join!(playlist_handle, video_handle)?;
+
+        Ok(())
     }
 }

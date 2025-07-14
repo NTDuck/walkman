@@ -15,6 +15,7 @@ publish = false
 
 [workspace.dependencies]
 # Cross-cutting concerns, centralized
+anyhow = "1.0.98"
 async-stream = "0.3.6"
 async-trait = "0.1.88"
 derive-new = "0.7.0"

@@ -9,6 +9,7 @@ publish.workspace = true
 [dependencies]
 domain = { path = "../domain" }
 
+anyhow = { workspace = true }
 async-trait = { workspace = true }
 derive-new = { workspace = true }
 futures-core = { workspace = true }

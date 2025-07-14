@@ -77,6 +77,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "anyhow"
+version = "1.0.98"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e16d2d3311acee920a9eb8d33b8cbc1787ce4a264e85f964c2404b969bdcd487"
+
+[[package]]
 name = "async-stream"
 version = "0.3.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -179,6 +185,7 @@ checksum = "b94f61472cee1439c0b966b47e3aca9ae07e45d070759512cd390ea2bebc6675"
 name = "cli-configurations"
 version = "0.1.0"
 dependencies = [
+ "anyhow",
  "clap",
  "domain",
  "infrastructures",
@@ -337,6 +344,7 @@ dependencies = [
 name = "infrastructures"
 version = "0.1.0"
 dependencies = [
+ "anyhow",
  "async-stream",
  "async-trait",
  "derive-new",
@@ -677,6 +685,7 @@ checksum = "323402cff2dd658f39ca17c789b502021b3f18707c91cdf22e3838e1b4023817"
 name = "use-cases"
 version = "0.1.0"
 dependencies = [
+ "anyhow",
  "async-trait",
  "derive-new",
  "domain",

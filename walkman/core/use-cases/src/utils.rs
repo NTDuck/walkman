@@ -1,10 +1,8 @@
 pub mod aliases {
-    use std::{borrow::Cow, path::Path, pin::Pin};
+    pub type Fallible<T> = ::anyhow::Result<T>;
 
-    use futures_core::Stream;
+    pub type MaybeOwnedString = ::std::borrow::Cow<'static, str>;
+    pub type MaybeOwnedPath = ::std::borrow::Cow<'static, ::std::path::Path>;
 
-    pub type MaybeOwnedString = Cow<'static, str>;
-    pub type MaybeOwnedPath = Cow<'static, Path>;
-
-    pub type BoxedStream<T> = Pin<Box<dyn Stream<Item = T> + Send>>;
+    pub type BoxedStream<T> = ::std::pin::Pin<Box<dyn ::futures_core::Stream<Item = T> + ::core::marker::Send>>;
 }
