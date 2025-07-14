@@ -1,6 +1,6 @@
 pub(crate) mod utils;
 
-use std::{io::{BufRead, BufReader}, path::PathBuf, process::{Command, Stdio}};
+use std::{io::{BufRead, BufReader}, path::PathBuf};
 
 use async_stream::stream;
 use async_trait::async_trait;
@@ -20,9 +20,8 @@ impl DownloadVideoView {
     pub fn new() -> Self {
         Self {
             progress_bar: indicatif::ProgressBar::new(100)
-                .with_style(indicatif::ProgressStyle::with_template("{prefix} [{bar:44}] {msg}")
-                    .expect("Error: Invalid progress bar template string")
-                    .progress_chars("█░ ")),
+                .with_style(indicatif::ProgressStyle::with_template("{prefix} {bar:50} {msg}")
+                    .expect("Error: Invalid progress bar template string")),
         }
     }
 }
@@ -46,11 +45,12 @@ impl DownloadVideoOutputBoundary for DownloadVideoView {
                 speed,
             } => {
                 self.progress_bar.set_position(*percentage as u64);
-                self.progress_bar.set_prefix(format!("[{speed}\t{eta}]"));
-                self.progress_bar.set_message(format!("[{percentage}% of {size}]"));
+                self.progress_bar.set_prefix(format!("{:>10} {:>10} {:>4}", size, speed, eta));
+                self.progress_bar.set_message(format!("{}%", percentage));
             },
             Completed(video) => {
-                self.progress_bar.finish_with_message(format!("{}", video.metadata.title));
+                self.progress_bar.finish();
+                println!("Downloaded `{}`", video.metadata.title);
             },
             Failed(error) => {
                 self.progress_bar.abandon_with_message(format!("{:?}", error));
@@ -83,46 +83,27 @@ impl Downloader for YtDlpDownloader {
     async fn download_video(&self, url: MaybeOwnedString, directory: MaybeOwnedPath) -> BoxedStream<VideoDownloadEvent> {
         use VideoDownloadEvent::*;
 
-        let mut command = Command::new("yt-dlp");
-        command
-            .args([
-                &*url,
-                "--paths", &directory.to_string_lossy(),
-                "--format", "bestaudio",
-                "--extract-audio",
-                "--audio-format", "mp3",
-                "--output", "%(title)s.%(ext)s",
-                "--quiet",
-                "--newline",
-                "--no-playlist",
-                "--progress",
-                "--progress-template", "[video-downloading]%(progress._percent_str)s;%(progress._eta_str)s;%(progress._total_bytes_str)s;%(progress._speed_str)s",
-                "--exec", "echo [video-completed]%(filepath)s;%(id)s;%(title)s;%(album)s;%(artist)s;%(genre)s",
-                "--color", "no_color",
-            ])
-            // Merge stderr into stdout
-            .stderr(Stdio::piped())
-            .stdout(Stdio::piped());
+        let command = duct::cmd!(
+            "yt-dlp",
+            &*url,
+            "--paths", &*directory,
+            "--format", "bestaudio",
+            "--extract-audio",
+            "--audio-format", "mp3",
+            "--output", "%(title)s.%(ext)s",
+            "--quiet",
+            "--newline",
+            "--no-playlist",
+            "--force-overwrites",
+            "--progress",
+            "--progress-template", "[video-downloading]%(progress._percent_str)s;%(progress._eta_str)s;%(progress._total_bytes_str)s;%(progress._speed_str)s",
+            "--exec", "echo [video-completed]%(filepath)s;%(id)s;%(title)s;%(album)s;%(artist)s;%(genre)s",
+            "--color", "no_color",
+        );
 
-        let mut process = match command.spawn() {
-            Ok(process) => process,
-            Err(_) => {
-                return Box::pin(stream! {
-                    yield Failed(format!("Error: Failed to execute command `{:?}`", command).into());
-                });
-            },
-        };
-
-        let stdout = match process.stdout.take() {
-            Some(stdout) => stdout,
-            None => {
-                return Box::pin(stream! {
-                    yield Failed(format!("Error: Failed to capture stdout of command `{:?}`", command).into());
-                });
-            },
-        };
-
-        let reader = BufReader::new(stdout);
+        let reader_handle = command.stderr_to_stdout().reader()
+            .expect("Error: Failed to read stdout");
+        let reader = BufReader::new(reader_handle);
 
         static DOWNLOADING_REGEX: Lazy<Regex> = Lazy::new(|| Regex::new(
             r"\[video-downloading\]\s*(?P<percent>\d+)(?:\.\d+)?%;(?P<eta>[^;]+);\s*(?P<size>[^;]+);\s*(?P<speed>[^\r\n]+)"
@@ -149,7 +130,7 @@ impl Downloader for YtDlpDownloader {
                             .parse()
                             .expect(&format!("Error: Failed to parse `u8` from regex-captured string")),
                         eta: Self::parse_attr(&captures["eta"])
-                            .expect(&format!("Error: Failed to regex-capture `eta` from line `{}`", line)),
+                            .unwrap_or("00:00".into()),
                         size: Self::parse_attr(&captures["size"])
                             .expect(&format!("Error: Failed to regex-capture `size` from line `{}`", line)),
                         speed: Self::parse_attr(&captures["speed"])
