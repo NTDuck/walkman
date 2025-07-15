@@ -1,5 +1,6 @@
 [alias]
 run-cli = "run -p cli-configurations"
+run-sandbox = "run -p sandbox-configurations"
 lint-rustfmt = "fmt --all"
 lint-clippy = "clippy --fix --workspace --all-targets --all-features --allow-dirty"
 
