@@ -26,15 +26,9 @@ impl DownloadVideoInputBoundary for DownloadVideoInteractor {
     async fn apply(&self, model: DownloadVideoRequestModel) -> Fallible<()> {
         use ::futures_util::StreamExt as _;
 
-        let DownloadVideoRequestModel {
-            url,
-            directory,
-        } = model;
+        let DownloadVideoRequestModel { url, directory } = model;
 
-        let video_events = self
-            .downloader
-            .download_video(url, directory)
-            .await?;
+        let video_events = self.downloader.download_video(url, directory).await?;
 
         let output_boundary = self.output_boundary.clone();
         let metadata_writer = self.metadata_writer.clone();
@@ -45,9 +39,7 @@ impl DownloadVideoInputBoundary for DownloadVideoInteractor {
             output_boundary.update(&event).await?;
 
             if let VideoEvent::Success(event) = event {
-                metadata_writer
-                    .write_video(&event.video)
-                    .await?;
+                metadata_writer.write_video(&event.video).await?;
             }
         }
 
@@ -68,14 +60,8 @@ impl DownloadPlaylistInputBoundary for DownloadPlaylistInteractor {
     async fn apply(&self, model: DownloadPlaylistRequestModel) -> Fallible<()> {
         use ::futures_util::StreamExt as _;
 
-        let DownloadPlaylistRequestModel {
-            url,
-            directory,
-        } = model;
-        let (playlist_events, video_events) = self
-            .downloader
-            .download_playlist(url, directory)
-            .await?;
+        let DownloadPlaylistRequestModel { url, directory } = model;
+        let (playlist_events, video_events) = self.downloader.download_playlist(url, directory).await?;
 
         let output_boundary = self.output_boundary.clone();
         let metadata_writer = self.metadata_writer.clone();
@@ -87,9 +73,7 @@ impl DownloadPlaylistInputBoundary for DownloadPlaylistInteractor {
                 DownloadPlaylistOutputBoundary::update(&*output_boundary, &event).await?;
 
                 if let PlaylistEvent::Success(event) = event {
-                    metadata_writer
-                        .write_playlist(&event.playlist)
-                        .await?;
+                    metadata_writer.write_playlist(&event.playlist).await?;
                 }
             }
 

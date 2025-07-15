@@ -33,9 +33,7 @@ impl DownloadVideoView {
         progress_bar.set_prefix(format!("{:>10} {:>10} {:>4}", "??MiB", "??MiB/s", "??:??"));
         progress_bar.set_message("??%");
 
-        Ok(Self {
-            progress_bar,
-        })
+        Ok(Self { progress_bar })
     }
 }
 
@@ -55,12 +53,10 @@ impl DownloadVideoOutputBoundary for DownloadVideoView {
 
 impl DownloadVideoView {
     fn update_on_downloading_video_event(&self, event: &VideoDownloadingEvent) -> Fallible<()> {
-        self.progress_bar
-            .set_position(event.percentage as u64);
+        self.progress_bar.set_position(event.percentage as u64);
         self.progress_bar
             .set_prefix(format!("{:>10} {:>10} {:>4}", event.size, event.speed, event.eta));
-        self.progress_bar
-            .set_message(format!("{}%", event.percentage));
+        self.progress_bar.set_message(format!("{}%", event.percentage));
 
         Ok(())
     }
@@ -69,19 +65,10 @@ impl DownloadVideoView {
         use ::colored::Colorize as _;
 
         let progress_bar_style = ::indicatif::ProgressStyle::with_template("{prefix} {bar:50.green} {msg}")?;
-        self.progress_bar
-            .set_style(progress_bar_style);
+        self.progress_bar.set_style(progress_bar_style);
 
         self.progress_bar.finish();
-        println!(
-            "Downloaded {}.",
-            event
-                .video
-                .metadata
-                .title
-                .green()
-                .bold()
-        );
+        println!("Downloaded {}.", event.video.metadata.title.green().bold());
 
         Ok(())
     }
@@ -89,8 +76,7 @@ impl DownloadVideoView {
     fn update_on_warning_video_event(&self, event: &VideoWarningEvent) -> Fallible<()> {
         use ::colored::Colorize as _;
 
-        self.progress_bar
-            .println(format!("{}", event.message.yellow().bold()));
+        self.progress_bar.println(format!("{}", event.message.yellow().bold()));
 
         Ok(())
     }
@@ -99,8 +85,7 @@ impl DownloadVideoView {
         use ::colored::Colorize as _;
 
         let progress_bar_style = ::indicatif::ProgressStyle::with_template("{prefix} {bar:50.red} {msg}")?;
-        self.progress_bar
-            .set_style(progress_bar_style);
+        self.progress_bar.set_style(progress_bar_style);
 
         self.progress_bar.abandon();
         eprintln!("{}", event.message.red().bold());
@@ -226,18 +211,11 @@ impl YtDlpDownloader {
 
         let video = Video {
             id,
-            metadata: VideoMetadata {
-                title,
-                album,
-                artists,
-                genres,
-            },
+            metadata: VideoMetadata { title, album, artists, genres },
             path: ::std::path::PathBuf::from(&*path).into(),
         };
 
-        Some(VideoSuccessEvent {
-            video,
-        })
+        Some(VideoSuccessEvent { video })
     }
 
     fn parse_video_warning_event(line: &str) -> Option<VideoWarningEvent> {
@@ -246,9 +224,7 @@ impl YtDlpDownloader {
         let captures = REGEX.captures(line)?;
         let message = Self::parse_attr(&captures["message"])?;
 
-        Some(VideoWarningEvent {
-            message,
-        })
+        Some(VideoWarningEvent { message })
     }
 
     fn parse_video_error_event(line: &str) -> Option<VideoErrorEvent> {
@@ -257,9 +233,7 @@ impl YtDlpDownloader {
         let captures = REGEX.captures(line)?;
         let message = Self::parse_attr(&captures["message"])?;
 
-        Some(VideoErrorEvent {
-            message,
-        })
+        Some(VideoErrorEvent { message })
     }
 
     fn parse_multivalued_attr(captured: &str) -> Vec<MaybeOwnedString> {
@@ -316,10 +290,7 @@ impl MetadataWriter for GenericMetadataWriter {
         tag.set_artist(metadata.artists.join(", "));
         tag.set_genre(metadata.genres.join(", "));
 
-        tag.save_to_path(
-            video.path.clone(),
-            ::lofty::config::WriteOptions::default().respect_read_only(false),
-        )?;
+        tag.save_to_path(video.path.clone(), ::lofty::config::WriteOptions::default().respect_read_only(false))?;
 
         Ok(())
     }

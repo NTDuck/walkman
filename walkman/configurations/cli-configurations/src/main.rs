@@ -51,9 +51,7 @@ async fn main() -> Fallible<()> {
                 directory: directory.to_owned().into(),
             };
 
-            download_video_interactor
-                .apply(model)
-                .await?;
+            download_video_interactor.apply(model).await?;
         },
         _ => unreachable!(),
     }
