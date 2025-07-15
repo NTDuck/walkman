@@ -189,9 +189,6 @@ dependencies = [
  "clap",
  "domain",
  "infrastructures",
- "lofty",
- "once_cell",
- "regex",
  "tokio",
  "use-cases",
 ]
@@ -367,6 +364,7 @@ dependencies = [
  "lofty",
  "once_cell",
  "regex",
+ "tokio",
  "use-cases",
 ]
 

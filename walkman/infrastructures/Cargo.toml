@@ -23,6 +23,7 @@ derive-new = { workspace = true }
 id3 = "1.16.3"
 duct = "1.0.0"
 colored = "3.0.0"
+tokio = { workspace = true, features = ["time"] }
 
 [lints]
 workspace = true

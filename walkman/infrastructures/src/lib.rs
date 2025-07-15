@@ -24,7 +24,11 @@ pub struct DownloadVideoView {
 impl DownloadVideoView {
     pub fn new() -> Fallible<Self> {
         let progress_bar_style = ::indicatif::ProgressStyle::with_template("{prefix} {bar:50} {msg}")?;
-        let progress_bar = ::indicatif::ProgressBar::new(100).with_style(progress_bar_style);
+        let progress_bar = ::indicatif::ProgressBar::new(100)
+            .with_style(progress_bar_style);
+
+        progress_bar.set_prefix(format!("{:>10} {:>10} {:>4}", "??MiB", "??MiB/s", "??:??"));
+        progress_bar.set_message("??%");
 
         Ok(Self {
             progress_bar,
@@ -51,11 +55,19 @@ impl DownloadVideoOutputBoundary for DownloadVideoView {
                 self.progress_bar
                     .set_message(format!("{}%", percentage));
             },
+
             VideoDownloadEvent::Completed(video) => {
+                let progress_bar_style = ::indicatif::ProgressStyle::with_template("{prefix} {bar:50.green} {msg}")?;
+                self.progress_bar.set_style(progress_bar_style);
+
                 self.progress_bar.finish();
                 println!("Downloaded {}.", video.metadata.title.green().bold());
             },
+
             VideoDownloadEvent::Failed(error) => {
+                let progress_bar_style = ::indicatif::ProgressStyle::with_template("{prefix} {bar:50.red} {msg}")?;
+                self.progress_bar.set_style(progress_bar_style);
+
                 self.progress_bar.abandon();
                 eprintln!("{}", error.red().bold());
             },
@@ -129,7 +141,7 @@ impl Downloader for YtDlpDownloader {
         static COMPLETED_REGEX: ::once_cell::sync::Lazy<::regex::Regex> = regex!(
             r"\[video-completed\](?P<filepath>[^;]+);(?P<id>[^;]+);(?P<title>[^;]+);(?P<album>[^;]+);(?P<artist>[^;]+);(?P<genre>[^\r\n]+)"
         );
-        static FAILED_REGEX: ::once_cell::sync::Lazy<::regex::Regex> = regex!(r"^ERROR: \{(?P<error>[^}]*)\}$");
+        static FAILED_REGEX: ::once_cell::sync::Lazy<::regex::Regex> = regex!(r"^ERROR:\s*(?P<error>.+)$");
 
         let events = ::async_stream::stream! {
             for line in reader.lines() {
