@@ -60,7 +60,7 @@ pub trait MetadataWriter: Send + Sync {
             .collect::<::futures_util::stream::FuturesUnordered<_>>();
 
         // https://users.rust-lang.org/t/awaiting-futuresunordered/49295
-        while let Some(_) = futures.next().await {}
+        while (futures.next().await).is_some() {}
 
         Ok(())
     }

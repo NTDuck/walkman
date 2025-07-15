@@ -197,18 +197,18 @@ impl Downloader for YtDlpDownloader {
 }
 
 impl YtDlpDownloader {
-    fn parse_multivalued_attr<'a>(captured: &'a str) -> Vec<MaybeOwnedString> {
+    fn parse_multivalued_attr(captured: &str) -> Vec<MaybeOwnedString> {
         match Self::parse_attr(captured) {
             Some(attrs) => attrs
                 .split(',')
-                .map(|attr| Self::normalize(attr))
+                .map(Self::normalize)
                 .map(|attr| attr.to_owned().into())
                 .collect(),
             None => Vec::new(),
         }
     }
 
-    fn parse_attr<'a>(captured: &'a str) -> Option<MaybeOwnedString> {
+    fn parse_attr(captured: &str) -> Option<MaybeOwnedString> {
         let captured = Self::normalize(captured);
 
         if captured == "NA" {
@@ -218,7 +218,7 @@ impl YtDlpDownloader {
         }
     }
 
-    fn normalize<'a>(captured: &'a str) -> &'a str {
+    fn normalize(captured: &str) -> &str {
         captured.trim()
     }
 }

@@ -45,13 +45,10 @@ impl DownloadVideoInputBoundary for DownloadVideoInteractor {
         while let Some(event) = video_events.next().await {
             output_boundary.update(&event).await?;
 
-            match event {
-                VideoDownloadEvent::Completed(video) => {
-                    metadata_writer
-                        .write_video(&video)
-                        .await?;
-                },
-                _ => {},
+            if let VideoDownloadEvent::Completed(video) = event {
+                metadata_writer
+                    .write_video(&video)
+                    .await?;
             }
         }
 
@@ -90,13 +87,10 @@ impl DownloadPlaylistInputBoundary for DownloadPlaylistInteractor {
             while let Some(event) = playlist_events.next().await {
                 DownloadPlaylistOutputBoundary::update(&*output_boundary, &event).await?;
 
-                match event {
-                    PlaylistDownloadEvent::Completed(playlist) => {
-                        metadata_writer
-                            .write_playlist(&playlist)
-                            .await?;
-                    },
-                    _ => {},
+                if let PlaylistDownloadEvent::Completed(playlist) = event {
+                    metadata_writer
+                        .write_playlist(&playlist)
+                        .await?;
                 }
             }
 
