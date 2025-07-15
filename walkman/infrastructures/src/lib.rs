@@ -3,7 +3,7 @@ pub(crate) mod utils;
 use ::async_trait::async_trait;
 use ::derive_new::new;
 use ::domain::Video;
-use domain::VideoMetadata;
+use ::domain::VideoMetadata;
 use ::use_cases::{boundaries::{DownloadPlaylistOutputBoundary, DownloadVideoOutputBoundary}, gateways::{Downloader, MetadataWriter, PlaylistDownloadEvent, VideoDownloadEvent}};
 
 use crate::utils::aliases::{BoxedStream, Fallible, MaybeOwnedPath, MaybeOwnedString};
@@ -185,35 +185,6 @@ impl YtDlpDownloader {
     }
 }
 
-
-/*
-Options:
---no-abort-on-error
---no-plugin-dirs
---flat-playlist
---color no_color
---min-filesize ???
---max-filesize 44.6M
-
-Video only:
---no-playlist
-
-Playlist only:
---yes-playlist
-
-Update:
---download-archive [xxx] (will be a file in the current dir)
---no-break-on-existing
-
-
-Initial check-log-stuff:
---dump-user-agent: 
-
-Consider:
-- skip livestreams.
-
-*/
-
 #[derive(new)]
 pub struct GenericMetadataWriter;
 
@@ -244,7 +215,7 @@ impl MetadataWriter for GenericMetadataWriter {
         tag.set_artist(metadata.artists.join(", "));
         tag.set_genre(metadata.genres.join(", "));
 
-        tag.save_to_path(video.path.clone(), lofty::config::WriteOptions::default().respect_read_only(false))?;
+        tag.save_to_path(video.path.clone(), ::lofty::config::WriteOptions::default().respect_read_only(false))?;
 
         Ok(())
     }
