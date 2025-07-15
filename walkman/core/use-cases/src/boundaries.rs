@@ -1,7 +1,7 @@
 use ::async_trait::async_trait;
 
-use crate::gateways::PlaylistDownloadEvent;
-use crate::gateways::VideoDownloadEvent;
+use crate::gateways::PlaylistEvent;
+use crate::gateways::VideoEvent;
 use crate::utils::aliases::Fallible;
 use crate::utils::aliases::MaybeOwnedPath;
 use crate::utils::aliases::MaybeOwnedString;
@@ -18,7 +18,7 @@ pub struct DownloadVideoRequestModel {
 
 #[async_trait]
 pub trait DownloadVideoOutputBoundary: Send + Sync {
-    async fn update(&self, event: &VideoDownloadEvent) -> Fallible<()>;
+    async fn update(&self, event: &VideoEvent) -> Fallible<()>;
 }
 
 #[async_trait]
@@ -33,5 +33,5 @@ pub struct DownloadPlaylistRequestModel {
 
 #[async_trait]
 pub trait DownloadPlaylistOutputBoundary: DownloadVideoOutputBoundary {
-    async fn update(&self, event: &PlaylistDownloadEvent) -> Fallible<()>;
+    async fn update(&self, event: &PlaylistEvent) -> Fallible<()>;
 }

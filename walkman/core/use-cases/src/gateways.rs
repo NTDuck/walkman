@@ -13,37 +13,76 @@ pub trait Downloader: Send + Sync {
         &self,
         url: MaybeOwnedString,
         directory: MaybeOwnedPath,
-    ) -> Fallible<BoxedStream<VideoDownloadEvent>>;
+    ) -> Fallible<BoxedStream<VideoEvent>>;
+
     async fn download_playlist(
         &self,
         url: MaybeOwnedString,
         directory: MaybeOwnedPath,
-    ) -> Fallible<(BoxedStream<PlaylistDownloadEvent>, BoxedStream<VideoDownloadEvent>)>;
+    ) -> Fallible<(BoxedStream<PlaylistEvent>, BoxedStream<VideoEvent>)>;
 }
 
 #[derive(Debug)]
-pub enum VideoDownloadEvent {
-    Downloading {
-        percentage: u8,
-
-        eta: MaybeOwnedString,
-        size: MaybeOwnedString,
-        speed: MaybeOwnedString,
-    },
-    Completed(Video),
-    Failed(MaybeOwnedString),
+pub enum VideoEvent {
+    Downloading(VideoDownloadingEvent),
+    Success(VideoSuccessEvent),
+    Warning(VideoWarningEvent),
+    Error(VideoErrorEvent),
 }
 
 #[derive(Debug)]
-pub enum PlaylistDownloadEvent {
-    Downloading {
-        video: Video,
+pub struct VideoDownloadingEvent {
+    pub percentage: u8,
 
-        downloaded: usize,
-        total: usize,
-    },
-    Completed(Playlist),
-    Failed(MaybeOwnedString),
+    pub eta: MaybeOwnedString,
+    pub size: MaybeOwnedString,
+    pub speed: MaybeOwnedString,
+}
+
+#[derive(Debug)]
+pub struct VideoSuccessEvent {
+    pub video: Video,
+}
+
+#[derive(Debug)]
+pub struct VideoWarningEvent {
+    pub message: MaybeOwnedString,
+}
+
+#[derive(Debug)]
+pub struct VideoErrorEvent {
+    pub message: MaybeOwnedString,
+}
+
+#[derive(Debug)]
+pub enum PlaylistEvent {
+    Downloading(PlaylistDownloadingEvent),
+    Success(PlaylistSuccessEvent),
+    Warning(PlaylistWarningEvent),
+    Error(PlaylistErrorEvent),
+}
+
+#[derive(Debug)]
+pub struct PlaylistDownloadingEvent {
+    pub video: Video,
+
+    pub downloaded: usize,
+    pub total: usize,
+}
+
+#[derive(Debug)]
+pub struct PlaylistSuccessEvent {
+    pub playlist: Playlist,
+}
+
+#[derive(Debug)]
+pub struct PlaylistWarningEvent {
+    pub message: MaybeOwnedString,
+}
+
+#[derive(Debug)]
+pub struct PlaylistErrorEvent {
+    pub message: MaybeOwnedString,
 }
 
 #[async_trait]
