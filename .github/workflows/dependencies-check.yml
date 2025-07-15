@@ -14,7 +14,7 @@ jobs:
           - stable
         check:
           # - advisories
-          - check bans licenses sources
+          - bans licenses sources
 
     # Prevent sudden announcement of a new advisory from failing CI:
     continue-on-error: ${{ matrix.check == 'advisories' }}
