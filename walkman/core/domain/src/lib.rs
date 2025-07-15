@@ -16,7 +16,7 @@ pub struct UnresolvedVideo {
     pub metadata: VideoMetadata,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub struct VideoMetadata {
     pub title: MaybeOwnedString,
 

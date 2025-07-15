@@ -3,6 +3,7 @@ mod utils;
 use ::infrastructures::DownloadVideoView;
 use ::infrastructures::Id3MetadataWriter;
 use ::infrastructures::YtDlpDownloader;
+use ::use_cases::boundaries::DownloadPlaylistRequestModel;
 use ::use_cases::boundaries::DownloadVideoInputBoundary;
 use ::use_cases::boundaries::DownloadVideoRequestModel;
 use ::use_cases::interactors::DownloadVideoInteractor;
@@ -35,6 +36,21 @@ async fn main() -> Fallible<()> {
                         .default_value(env!("CARGO_WORKSPACE_DIR"))
                         .value_parser(::clap::value_parser!(::std::path::PathBuf)),
                 ),
+        )
+        .subcommand(
+            ::clap::Command::new("download-playlist")
+                .arg(
+                    ::clap::Arg::new("url")
+                        .short('i')
+                        .default_value("https://youtube.com/playlist?list=PLYXU4Ir4-8GPeP4lKT9aevhyhbSoHR04M&si=Lf2wNtv6hpcAH3us")
+                        .value_parser(::clap::value_parser!(::std::string::String)),
+                )
+                .arg(
+                    ::clap::Arg::new("directory")
+                        .short('o')
+                        .default_value(env!("CARGO_WORKSPACE_DIR"))
+                        .value_parser(::clap::value_parser!(::std::path::PathBuf)),
+                ),
         );
 
     match command.get_matches().subcommand() {
@@ -53,6 +69,25 @@ async fn main() -> Fallible<()> {
 
             download_video_interactor.apply(model).await?;
         },
+
+        Some(("download-playlist", matches)) => {
+            let url = matches
+                .get_one::<::std::string::String>("url")
+                .expect("Error: Missing required argument `url`");
+            let directory = matches
+                .get_one::<::std::path::PathBuf>("directory")
+                .expect("Error: Missing required argument `directory`");
+
+            let model = DownloadPlaylistRequestModel {
+                url: url.to_owned().into(),
+                directory: directory.to_owned().into(),
+            };
+
+            let _ = model;
+
+            todo!()
+        },
+
         _ => unreachable!(),
     }
 

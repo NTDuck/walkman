@@ -295,7 +295,7 @@ impl MetadataWriter for GenericMetadataWriter {
         use ::lofty::tag::Accessor as _;
         use ::lofty::tag::TagExt as _;
 
-        let mut file = ::lofty::read_from_path(video.path.clone())?;
+        let mut file = ::lofty::read_from_path(&video.path)?;
 
         let tag = match file.primary_tag_mut() {
             Some(tag) => tag,
@@ -308,14 +308,12 @@ impl MetadataWriter for GenericMetadataWriter {
             },
         };
 
-        let metadata = video.metadata.clone();
+        tag.set_title(video.metadata.title.to_owned().into());
+        tag.set_album(video.metadata.album.to_owned().into());
+        tag.set_artist(video.metadata.artists.join(", ").to_owned().into());
+        tag.set_genre(video.metadata.genres.join(", ").to_owned().into());
 
-        tag.set_title(metadata.title.into_owned());
-        tag.set_album(metadata.album.into_owned());
-        tag.set_artist(metadata.artists.join(", "));
-        tag.set_genre(metadata.genres.join(", "));
-
-        tag.save_to_path(video.path.clone(), ::lofty::config::WriteOptions::default().respect_read_only(false))?;
+        tag.save_to_path(&video.path, ::lofty::config::WriteOptions::default())?;
 
         Ok(())
     }
@@ -331,14 +329,12 @@ impl MetadataWriter for Id3MetadataWriter {
 
         let mut tag = ::id3::Tag::new();
 
-        let metadata = video.metadata.clone();
+        tag.set_title(&*video.metadata.title);
+        tag.set_album(&*video.metadata.album);
+        tag.set_artist(&*video.metadata.artists.join(", "));
+        tag.set_genre(&*video.metadata.genres.join(", "));
 
-        tag.set_title(metadata.title);
-        tag.set_album(metadata.album);
-        tag.set_artist(metadata.artists.join(", "));
-        tag.set_genre(metadata.genres.join(", "));
-
-        tag.write_to_path(video.path.clone(), ::id3::Version::Id3v23)?;
+        tag.write_to_path(&video.path, ::id3::Version::Id3v23)?;
 
         Ok(())
     }
