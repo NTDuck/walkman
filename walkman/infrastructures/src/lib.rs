@@ -9,9 +9,9 @@ use ::use_cases::boundaries::DownloadVideoOutputBoundary;
 use ::use_cases::gateways::Downloader;
 use ::use_cases::gateways::MetadataWriter;
 use ::use_cases::gateways::PlaylistEvent;
+use ::use_cases::gateways::VideoEvent;
 use use_cases::gateways::VideoDownloadingEvent;
 use use_cases::gateways::VideoErrorEvent;
-use ::use_cases::gateways::VideoEvent;
 use use_cases::gateways::VideoSuccessEvent;
 use use_cases::gateways::VideoWarningEvent;
 
@@ -28,13 +28,14 @@ pub struct DownloadVideoView {
 impl DownloadVideoView {
     pub fn new() -> Fallible<Self> {
         let progress_bar_style = ::indicatif::ProgressStyle::with_template("{prefix} {bar:50} {msg}")?;
-        let progress_bar = ::indicatif::ProgressBar::new(100)
-            .with_style(progress_bar_style);
+        let progress_bar = ::indicatif::ProgressBar::new(100).with_style(progress_bar_style);
 
         progress_bar.set_prefix(format!("{:>10} {:>10} {:>4}", "??MiB", "??MiB/s", "??:??"));
         progress_bar.set_message("??%");
 
-        Ok(Self { progress_bar })
+        Ok(Self {
+            progress_bar,
+        })
     }
 }
 
@@ -68,10 +69,19 @@ impl DownloadVideoView {
         use ::colored::Colorize as _;
 
         let progress_bar_style = ::indicatif::ProgressStyle::with_template("{prefix} {bar:50.green} {msg}")?;
-        self.progress_bar.set_style(progress_bar_style);
+        self.progress_bar
+            .set_style(progress_bar_style);
 
         self.progress_bar.finish();
-        println!("Downloaded {}.", event.video.metadata.title.green().bold());
+        println!(
+            "Downloaded {}.",
+            event
+                .video
+                .metadata
+                .title
+                .green()
+                .bold()
+        );
 
         Ok(())
     }
@@ -79,7 +89,8 @@ impl DownloadVideoView {
     fn update_on_warning_video_event(&self, event: &VideoWarningEvent) -> Fallible<()> {
         use ::colored::Colorize as _;
 
-        self.progress_bar.println(format!("{}", event.message.yellow().bold()));
+        self.progress_bar
+            .println(format!("{}", event.message.yellow().bold()));
 
         Ok(())
     }
@@ -88,7 +99,8 @@ impl DownloadVideoView {
         use ::colored::Colorize as _;
 
         let progress_bar_style = ::indicatif::ProgressStyle::with_template("{prefix} {bar:50.red} {msg}")?;
-        self.progress_bar.set_style(progress_bar_style);
+        self.progress_bar
+            .set_style(progress_bar_style);
 
         self.progress_bar.abandon();
         eprintln!("{}", event.message.red().bold());
@@ -101,16 +113,12 @@ pub struct DownloadPlaylistView;
 
 #[async_trait]
 impl DownloadVideoOutputBoundary for DownloadPlaylistView {
-    async fn update(&self, _event: &VideoEvent) -> Fallible<()> {
-        todo!()
-    }
+    async fn update(&self, _event: &VideoEvent) -> Fallible<()> { todo!() }
 }
 
 #[async_trait]
 impl DownloadPlaylistOutputBoundary for DownloadPlaylistView {
-    async fn update(&self, _event: &PlaylistEvent) -> Fallible<()> {
-        todo!()
-    }
+    async fn update(&self, _event: &PlaylistEvent) -> Fallible<()> { todo!() }
 }
 
 #[derive(new)]
@@ -119,9 +127,7 @@ pub struct YtDlpDownloader;
 #[async_trait]
 impl Downloader for YtDlpDownloader {
     async fn download_video(
-        &self,
-        url: MaybeOwnedString,
-        directory: MaybeOwnedPath,
+        &self, url: MaybeOwnedString, directory: MaybeOwnedPath,
     ) -> Fallible<BoxedStream<VideoEvent>> {
         use ::std::io::BufRead as _;
 
@@ -168,9 +174,7 @@ impl Downloader for YtDlpDownloader {
     }
 
     async fn download_playlist(
-        &self,
-        _url: MaybeOwnedString,
-        _directory: MaybeOwnedPath,
+        &self, _url: MaybeOwnedString, _directory: MaybeOwnedPath,
     ) -> Fallible<(BoxedStream<PlaylistEvent>, BoxedStream<VideoEvent>)> {
         todo!()
     }
@@ -178,7 +182,8 @@ impl Downloader for YtDlpDownloader {
 
 impl YtDlpDownloader {
     fn parse_video_event(line: &str) -> Option<VideoEvent> {
-        Self::parse_video_downloading_event(line).map(VideoEvent::Downloading)
+        Self::parse_video_downloading_event(line)
+            .map(VideoEvent::Downloading)
             .or_else(|| Self::parse_video_success_event(line).map(VideoEvent::Success))
             .or_else(|| Self::parse_video_warning_event(line).map(VideoEvent::Warning))
             .or_else(|| Self::parse_video_error_event(line).map(VideoEvent::Error))
@@ -193,8 +198,7 @@ impl YtDlpDownloader {
         let captures = REGEX.captures(line)?;
 
         let percentage = Self::parse_attr(&captures["percent"])?;
-        let eta = Self::parse_attr(&captures["eta"])
-            .unwrap_or("00:00".into());
+        let eta = Self::parse_attr(&captures["eta"]).unwrap_or("00:00".into());
         let size = Self::parse_attr(&captures["size"])?;
         let speed = Self::parse_attr(&captures["speed"])?;
 
@@ -231,7 +235,9 @@ impl YtDlpDownloader {
             path: ::std::path::PathBuf::from(&*path).into(),
         };
 
-        Some(VideoSuccessEvent { video })
+        Some(VideoSuccessEvent {
+            video,
+        })
     }
 
     fn parse_video_warning_event(line: &str) -> Option<VideoWarningEvent> {
@@ -240,7 +246,9 @@ impl YtDlpDownloader {
         let captures = REGEX.captures(line)?;
         let message = Self::parse_attr(&captures["message"])?;
 
-        Some(VideoWarningEvent { message })
+        Some(VideoWarningEvent {
+            message,
+        })
     }
 
     fn parse_video_error_event(line: &str) -> Option<VideoErrorEvent> {
@@ -249,7 +257,9 @@ impl YtDlpDownloader {
         let captures = REGEX.captures(line)?;
         let message = Self::parse_attr(&captures["message"])?;
 
-        Some(VideoErrorEvent { message })
+        Some(VideoErrorEvent {
+            message,
+        })
     }
 
     fn parse_multivalued_attr(captured: &str) -> Vec<MaybeOwnedString> {
@@ -273,9 +283,7 @@ impl YtDlpDownloader {
         }
     }
 
-    fn normalize(captured: &str) -> &str {
-        captured.trim()
-    }
+    fn normalize(captured: &str) -> &str { captured.trim() }
 }
 
 #[derive(new)]
@@ -308,7 +316,10 @@ impl MetadataWriter for GenericMetadataWriter {
         tag.set_artist(metadata.artists.join(", "));
         tag.set_genre(metadata.genres.join(", "));
 
-        tag.save_to_path(video.path.clone(), ::lofty::config::WriteOptions::default().respect_read_only(false))?;
+        tag.save_to_path(
+            video.path.clone(),
+            ::lofty::config::WriteOptions::default().respect_read_only(false),
+        )?;
 
         Ok(())
     }

@@ -10,15 +10,11 @@ use crate::utils::aliases::MaybeOwnedString;
 #[async_trait]
 pub trait Downloader: Send + Sync {
     async fn download_video(
-        &self,
-        url: MaybeOwnedString,
-        directory: MaybeOwnedPath,
+        &self, url: MaybeOwnedString, directory: MaybeOwnedPath,
     ) -> Fallible<BoxedStream<VideoEvent>>;
 
     async fn download_playlist(
-        &self,
-        url: MaybeOwnedString,
-        directory: MaybeOwnedPath,
+        &self, url: MaybeOwnedString, directory: MaybeOwnedPath,
     ) -> Fallible<(BoxedStream<PlaylistEvent>, BoxedStream<VideoEvent>)>;
 }
 
