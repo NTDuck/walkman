@@ -32,7 +32,10 @@ impl DownloadVideoInputBoundary for DownloadVideoInteractor {
             directory,
         } = model;
 
-        let video_events = self.downloader.download_video(url, directory).await?;
+        let video_events = self
+            .downloader
+            .download_video(url, directory)
+            .await?;
 
         let output_boundary = self.output_boundary.clone();
         let metadata_writer = self.metadata_writer.clone();
@@ -44,7 +47,9 @@ impl DownloadVideoInputBoundary for DownloadVideoInteractor {
 
             match event {
                 VideoDownloadEvent::Completed(video) => {
-                    metadata_writer.write_video(&video).await?;
+                    metadata_writer
+                        .write_video(&video)
+                        .await?;
                 },
                 _ => {},
             }
@@ -71,7 +76,10 @@ impl DownloadPlaylistInputBoundary for DownloadPlaylistInteractor {
             url,
             directory,
         } = model;
-        let (playlist_events, video_events) = self.downloader.download_playlist(url, directory).await?;
+        let (playlist_events, video_events) = self
+            .downloader
+            .download_playlist(url, directory)
+            .await?;
 
         let output_boundary = self.output_boundary.clone();
         let metadata_writer = self.metadata_writer.clone();
@@ -84,7 +92,9 @@ impl DownloadPlaylistInputBoundary for DownloadPlaylistInteractor {
 
                 match event {
                     PlaylistDownloadEvent::Completed(playlist) => {
-                        metadata_writer.write_playlist(&playlist).await?;
+                        metadata_writer
+                            .write_playlist(&playlist)
+                            .await?;
                     },
                     _ => {},
                 }

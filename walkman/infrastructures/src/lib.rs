@@ -44,9 +44,12 @@ impl DownloadVideoOutputBoundary for DownloadVideoView {
                 size,
                 speed,
             } => {
-                self.progress_bar.set_position(*percentage as u64);
-                self.progress_bar.set_prefix(format!("{:>10} {:>10} {:>4}", size, speed, eta));
-                self.progress_bar.set_message(format!("{}%", percentage));
+                self.progress_bar
+                    .set_position(*percentage as u64);
+                self.progress_bar
+                    .set_prefix(format!("{:>10} {:>10} {:>4}", size, speed, eta));
+                self.progress_bar
+                    .set_message(format!("{}%", percentage));
             },
             VideoDownloadEvent::Completed(video) => {
                 self.progress_bar.finish();
@@ -196,8 +199,11 @@ impl Downloader for YtDlpDownloader {
 impl YtDlpDownloader {
     fn parse_multivalued_attr<'a>(captured: &'a str) -> Vec<MaybeOwnedString> {
         match Self::parse_attr(captured) {
-            Some(attrs) =>
-                attrs.split(',').map(|attr| Self::normalize(attr)).map(|attr| attr.to_owned().into()).collect(),
+            Some(attrs) => attrs
+                .split(',')
+                .map(|attr| Self::normalize(attr))
+                .map(|attr| attr.to_owned().into())
+                .collect(),
             None => Vec::new(),
         }
     }
