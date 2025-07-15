@@ -1,6 +1,5 @@
 use ::async_trait::async_trait;
 use ::derive_new::new;
-use ::std::sync::Arc;
 
 use crate::boundaries::DownloadPlaylistInputBoundary;
 use crate::boundaries::DownloadPlaylistOutputBoundary;
@@ -16,10 +15,10 @@ use crate::utils::aliases::Fallible;
 
 #[derive(new)]
 pub struct DownloadVideoInteractor {
-    output_boundary: Arc<dyn DownloadVideoOutputBoundary>,
+    output_boundary: ::std::sync::Arc<dyn DownloadVideoOutputBoundary>,
 
-    downloader: Arc<dyn Downloader>,
-    metadata_writer: Arc<dyn MetadataWriter>,
+    downloader: ::std::sync::Arc<dyn Downloader>,
+    metadata_writer: ::std::sync::Arc<dyn MetadataWriter>,
 }
 
 #[async_trait]
@@ -58,10 +57,10 @@ impl DownloadVideoInputBoundary for DownloadVideoInteractor {
 
 #[derive(new)]
 pub struct DownloadPlaylistInteractor {
-    output_boundary: Arc<dyn DownloadPlaylistOutputBoundary>,
+    output_boundary: ::std::sync::Arc<dyn DownloadPlaylistOutputBoundary>,
 
-    downloader: Arc<dyn Downloader>,
-    metadata_writer: Arc<dyn MetadataWriter>,
+    downloader: ::std::sync::Arc<dyn Downloader>,
+    metadata_writer: ::std::sync::Arc<dyn MetadataWriter>,
 }
 
 #[async_trait]

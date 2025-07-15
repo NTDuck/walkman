@@ -3,7 +3,6 @@ mod utils;
 use ::infrastructures::DownloadVideoView;
 use ::infrastructures::Id3MetadataWriter;
 use ::infrastructures::YtDlpDownloader;
-use ::std::sync::Arc;
 use ::use_cases::boundaries::DownloadVideoInputBoundary;
 use ::use_cases::boundaries::DownloadVideoRequestModel;
 use ::use_cases::interactors::DownloadVideoInteractor;
@@ -12,9 +11,9 @@ use crate::utils::aliases::Fallible;
 
 #[tokio::main]
 async fn main() -> Fallible<()> {
-    let download_video_view = Arc::new(DownloadVideoView::new()?);
-    let downloader = Arc::new(YtDlpDownloader::new());
-    let metadata_writer = Arc::new(Id3MetadataWriter::new());
+    let download_video_view = std::sync::Arc::new(DownloadVideoView::new()?);
+    let downloader = std::sync::Arc::new(YtDlpDownloader::new());
+    let metadata_writer = std::sync::Arc::new(Id3MetadataWriter::new());
 
     let download_video_interactor =
         DownloadVideoInteractor::new(download_video_view.clone(), downloader.clone(), metadata_writer.clone());
