@@ -1,6 +1,7 @@
 pub(crate) mod utils;
 
-use crate::utils::aliases::{MaybeOwnedPath, MaybeOwnedString};
+use crate::utils::aliases::MaybeOwnedPath;
+use crate::utils::aliases::MaybeOwnedString;
 
 #[derive(Debug)]
 pub struct Video {

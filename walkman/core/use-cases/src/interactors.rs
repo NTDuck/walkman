@@ -1,9 +1,18 @@
-use ::std::sync::Arc;
-
 use ::async_trait::async_trait;
 use ::derive_new::new;
+use ::std::sync::Arc;
 
-use crate::{boundaries::{DownloadPlaylistInputBoundary, DownloadPlaylistOutputBoundary, DownloadPlaylistRequestModel, DownloadVideoInputBoundary, DownloadVideoOutputBoundary, DownloadVideoRequestModel}, gateways::{Downloader, MetadataWriter, PlaylistDownloadEvent, VideoDownloadEvent}, utils::aliases::Fallible};
+use crate::boundaries::DownloadPlaylistInputBoundary;
+use crate::boundaries::DownloadPlaylistOutputBoundary;
+use crate::boundaries::DownloadPlaylistRequestModel;
+use crate::boundaries::DownloadVideoInputBoundary;
+use crate::boundaries::DownloadVideoOutputBoundary;
+use crate::boundaries::DownloadVideoRequestModel;
+use crate::gateways::Downloader;
+use crate::gateways::MetadataWriter;
+use crate::gateways::PlaylistDownloadEvent;
+use crate::gateways::VideoDownloadEvent;
+use crate::utils::aliases::Fallible;
 
 #[derive(new)]
 pub struct DownloadVideoInteractor {
@@ -18,7 +27,10 @@ impl DownloadVideoInputBoundary for DownloadVideoInteractor {
     async fn apply(&self, model: DownloadVideoRequestModel) -> Fallible<()> {
         use ::futures_util::StreamExt as _;
 
-        let DownloadVideoRequestModel { url, directory } = model;
+        let DownloadVideoRequestModel {
+            url,
+            directory,
+        } = model;
 
         let video_events = self.downloader.download_video(url, directory).await?;
 
@@ -55,7 +67,10 @@ impl DownloadPlaylistInputBoundary for DownloadPlaylistInteractor {
     async fn apply(&self, model: DownloadPlaylistRequestModel) -> Fallible<()> {
         use ::futures_util::StreamExt as _;
 
-        let DownloadPlaylistRequestModel { url, directory } = model;
+        let DownloadPlaylistRequestModel {
+            url,
+            directory,
+        } = model;
         let (playlist_events, video_events) = self.downloader.download_playlist(url, directory).await?;
 
         let output_boundary = self.output_boundary.clone();

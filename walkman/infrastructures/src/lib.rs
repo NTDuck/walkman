@@ -4,9 +4,17 @@ use ::async_trait::async_trait;
 use ::derive_new::new;
 use ::domain::Video;
 use ::domain::VideoMetadata;
-use ::use_cases::{boundaries::{DownloadPlaylistOutputBoundary, DownloadVideoOutputBoundary}, gateways::{Downloader, MetadataWriter, PlaylistDownloadEvent, VideoDownloadEvent}};
+use ::use_cases::boundaries::DownloadPlaylistOutputBoundary;
+use ::use_cases::boundaries::DownloadVideoOutputBoundary;
+use ::use_cases::gateways::Downloader;
+use ::use_cases::gateways::MetadataWriter;
+use ::use_cases::gateways::PlaylistDownloadEvent;
+use ::use_cases::gateways::VideoDownloadEvent;
 
-use crate::utils::aliases::{BoxedStream, Fallible, MaybeOwnedPath, MaybeOwnedString};
+use crate::utils::aliases::BoxedStream;
+use crate::utils::aliases::Fallible;
+use crate::utils::aliases::MaybeOwnedPath;
+use crate::utils::aliases::MaybeOwnedString;
 
 pub struct DownloadVideoView {
     progress_bar: ::indicatif::ProgressBar,
@@ -16,10 +24,11 @@ pub struct DownloadVideoView {
 impl DownloadVideoView {
     pub fn new() -> Fallible<Self> {
         let progress_bar_style = ::indicatif::ProgressStyle::with_template("{prefix} {bar:50} {msg}")?;
-        let progress_bar = ::indicatif::ProgressBar::new(100)
-            .with_style(progress_bar_style);
+        let progress_bar = ::indicatif::ProgressBar::new(100).with_style(progress_bar_style);
 
-        Ok(Self { progress_bar })
+        Ok(Self {
+            progress_bar,
+        })
     }
 }
 
@@ -29,7 +38,12 @@ impl DownloadVideoOutputBoundary for DownloadVideoView {
         use ::colored::Colorize as _;
 
         match event {
-            VideoDownloadEvent::Downloading { percentage, eta, size, speed } => {
+            VideoDownloadEvent::Downloading {
+                percentage,
+                eta,
+                size,
+                speed,
+            } => {
                 self.progress_bar.set_position(*percentage as u64);
                 self.progress_bar.set_prefix(format!("{:>10} {:>10} {:>4}", size, speed, eta));
                 self.progress_bar.set_message(format!("{}%", percentage));
@@ -69,33 +83,49 @@ pub struct YtDlpDownloader;
 
 #[async_trait]
 impl Downloader for YtDlpDownloader {
-    async fn download_video(&self, url: MaybeOwnedString, directory: MaybeOwnedPath) -> Fallible<BoxedStream<VideoDownloadEvent>> {
+    async fn download_video(
+        &self,
+        url: MaybeOwnedString,
+        directory: MaybeOwnedPath,
+    ) -> Fallible<BoxedStream<VideoDownloadEvent>> {
         use ::std::io::BufRead as _;
 
         let command = ::duct::cmd!(
             "yt-dlp",
             &*url,
-            "--paths", &*directory,
-            "--format", "bestaudio",
+            "--paths",
+            &*directory,
+            "--format",
+            "bestaudio",
             "--extract-audio",
-            "--audio-format", "mp3",
-            "--output", "%(title)s.%(ext)s",
+            "--audio-format",
+            "mp3",
+            "--output",
+            "%(title)s.%(ext)s",
             "--quiet",
             "--newline",
             "--abort-on-error",
             "--no-playlist",
             "--force-overwrites",
             "--progress",
-            "--progress-template", "[video-downloading]%(progress._percent_str)s;%(progress._eta_str)s;%(progress._total_bytes_str)s;%(progress._speed_str)s",
-            "--exec", "echo [video-completed]%(filepath)s;%(id)s;%(title)s;%(album)s;%(artist)s;%(genre)s",
-            "--color", "no_color",
+            "--progress-template",
+            "[video-downloading]%(progress._percent_str)s;%(progress._eta_str)s;%(progress._total_bytes_str)s;%\
+             (progress._speed_str)s",
+            "--exec",
+            "echo [video-completed]%(filepath)s;%(id)s;%(title)s;%(album)s;%(artist)s;%(genre)s",
+            "--color",
+            "no_color",
         );
 
         let reader_handle = command.stderr_to_stdout().reader()?;
         let reader = ::std::io::BufReader::new(reader_handle);
 
-        static DOWNLOADING_REGEX: ::once_cell::sync::Lazy<::regex::Regex> = regex!(r"\[video-downloading\]\s*(?P<percent>\d+)(?:\.\d+)?%;(?P<eta>[^;]+);\s*(?P<size>[^;]+);\s*(?P<speed>[^\r\n]+)");
-        static COMPLETED_REGEX: ::once_cell::sync::Lazy<::regex::Regex> = regex!(r"\[video-completed\](?P<filepath>[^;]+);(?P<id>[^;]+);(?P<title>[^;]+);(?P<album>[^;]+);(?P<artist>[^;]+);(?P<genre>[^\r\n]+)");
+        static DOWNLOADING_REGEX: ::once_cell::sync::Lazy<::regex::Regex> = regex!(
+            r"\[video-downloading\]\s*(?P<percent>\d+)(?:\.\d+)?%;(?P<eta>[^;]+);\s*(?P<size>[^;]+);\s*(?P<speed>[^\r\n]+)"
+        );
+        static COMPLETED_REGEX: ::once_cell::sync::Lazy<::regex::Regex> = regex!(
+            r"\[video-completed\](?P<filepath>[^;]+);(?P<id>[^;]+);(?P<title>[^;]+);(?P<album>[^;]+);(?P<artist>[^;]+);(?P<genre>[^\r\n]+)"
+        );
         static FAILED_REGEX: ::once_cell::sync::Lazy<::regex::Regex> = regex!(r"^ERROR: \{(?P<error>[^}]*)\}$");
 
         let events = ::async_stream::stream! {
@@ -120,7 +150,7 @@ impl Downloader for YtDlpDownloader {
                             speed,
                         };
                     }
-                    
+
                 } else if let Some(captures) = COMPLETED_REGEX.captures(&line) {
                     if let (Some(id), Some(title), Some(album), Some(path)) = (
                         Self::parse_attr(&captures["id"]),
@@ -154,7 +184,11 @@ impl Downloader for YtDlpDownloader {
         Ok(::std::boxed::Box::pin(events))
     }
 
-    async fn download_playlist(&self, _url: MaybeOwnedString, _directory: MaybeOwnedPath) -> Fallible<(BoxedStream<PlaylistDownloadEvent>, BoxedStream<VideoDownloadEvent>)> {
+    async fn download_playlist(
+        &self,
+        _url: MaybeOwnedString,
+        _directory: MaybeOwnedPath,
+    ) -> Fallible<(BoxedStream<PlaylistDownloadEvent>, BoxedStream<VideoDownloadEvent>)> {
         todo!()
     }
 }
@@ -162,10 +196,8 @@ impl Downloader for YtDlpDownloader {
 impl YtDlpDownloader {
     fn parse_multivalued_attr<'a>(captured: &'a str) -> Vec<MaybeOwnedString> {
         match Self::parse_attr(captured) {
-            Some(attrs) => attrs.split(',')
-                .map(|attr| Self::normalize(attr))
-                .map(|attr| attr.to_owned().into())
-                .collect(),
+            Some(attrs) =>
+                attrs.split(',').map(|attr| Self::normalize(attr)).map(|attr| attr.to_owned().into()).collect(),
             None => Vec::new(),
         }
     }
@@ -207,7 +239,7 @@ impl MetadataWriter for GenericMetadataWriter {
                 },
             },
         };
-        
+
         let metadata = video.metadata.clone();
 
         tag.set_title(metadata.title.into_owned());

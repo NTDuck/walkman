@@ -1,6 +1,10 @@
 use ::async_trait::async_trait;
 
-use crate::{gateways::{PlaylistDownloadEvent, VideoDownloadEvent}, utils::aliases::{Fallible, MaybeOwnedPath, MaybeOwnedString}};
+use crate::gateways::PlaylistDownloadEvent;
+use crate::gateways::VideoDownloadEvent;
+use crate::utils::aliases::Fallible;
+use crate::utils::aliases::MaybeOwnedPath;
+use crate::utils::aliases::MaybeOwnedString;
 
 #[async_trait]
 pub trait DownloadVideoInputBoundary {
