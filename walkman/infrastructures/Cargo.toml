@@ -14,6 +14,7 @@ anyhow = { workspace = true }
 async-stream = { workspace = true }
 async-trait = { workspace = true }
 futures-core = { workspace = true }
+futures-util = { workspace = true }
 indicatif = "0.18.0"
 lofty = "0.22.4"
 regex = "1.11.1"

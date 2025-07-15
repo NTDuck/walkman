@@ -61,7 +61,7 @@ impl DownloadPlaylistInputBoundary for DownloadPlaylistInteractor {
         let output_boundary = self.output_boundary.clone();
         let metadata_writer = self.metadata_writer.clone();
 
-        let playlist_handle: tokio::task::JoinHandle<Fallible<()>> = tokio::spawn(async move {
+        let playlist_handle: ::tokio::task::JoinHandle<Fallible<()>> = ::tokio::spawn(async move {
             ::futures_util::pin_mut!(playlist_events);
 
             while let Some(event) = playlist_events.next().await {
@@ -80,7 +80,7 @@ impl DownloadPlaylistInputBoundary for DownloadPlaylistInteractor {
 
         let output_boundary = self.output_boundary.clone();
 
-        let video_handle: tokio::task::JoinHandle<Fallible<()>> = tokio::spawn(async move {
+        let video_handle: ::tokio::task::JoinHandle<Fallible<()>> = ::tokio::spawn(async move {
             ::futures_util::pin_mut!(video_events);
 
             while let Some(event) = video_events.next().await {
@@ -90,7 +90,7 @@ impl DownloadPlaylistInputBoundary for DownloadPlaylistInteractor {
             Ok(())
         });
 
-        let _ = tokio::try_join!(playlist_handle, video_handle)?;
+        let _ = ::tokio::try_join!(playlist_handle, video_handle)?;
 
         Ok(())
     }

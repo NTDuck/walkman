@@ -1,14 +1,10 @@
 pub(crate) mod utils;
 
-use std::{io::{BufRead, BufReader}, path::PathBuf};
-
-use async_stream::stream;
-use async_trait::async_trait;
-use derive_new::new;
-use domain::{Video, VideoMetadata};
-use once_cell::sync::Lazy;
-use regex::Regex;
-use use_cases::{boundaries::{DownloadPlaylistOutputBoundary, DownloadVideoOutputBoundary}, gateways::{Downloader, MetadataWriter, PlaylistDownloadEvent, VideoDownloadEvent}};
+use ::async_trait::async_trait;
+use ::derive_new::new;
+use ::domain::Video;
+use domain::VideoMetadata;
+use ::use_cases::{boundaries::{DownloadPlaylistOutputBoundary, DownloadVideoOutputBoundary}, gateways::{Downloader, MetadataWriter, PlaylistDownloadEvent, VideoDownloadEvent}};
 
 use crate::utils::aliases::{BoxedStream, Fallible, MaybeOwnedPath, MaybeOwnedString};
 
@@ -16,6 +12,7 @@ pub struct DownloadVideoView {
     progress_bar: ::indicatif::ProgressBar,
 }
 
+// TODO migrate to with_key
 impl DownloadVideoView {
     pub fn new() -> Fallible<Self> {
         let progress_bar_style = ::indicatif::ProgressStyle::with_template("{prefix} {bar:50} {msg}")?;
@@ -30,12 +27,7 @@ impl DownloadVideoView {
 impl DownloadVideoOutputBoundary for DownloadVideoView {
     async fn update(&self, event: &VideoDownloadEvent) -> Fallible<()> {
         match event {
-            VideoDownloadEvent::Downloading {
-                percentage,
-                eta,
-                size,
-                speed,
-            } => {
+            VideoDownloadEvent::Downloading { percentage, eta, size, speed } => {
                 self.progress_bar.set_position(*percentage as u64);
                 self.progress_bar.set_prefix(format!("{:>10} {:>10} {:>4}", size, speed, eta));
                 self.progress_bar.set_message(format!("{}%", percentage));
@@ -45,7 +37,8 @@ impl DownloadVideoOutputBoundary for DownloadVideoView {
                 println!("Downloaded `{}`", video.metadata.title);
             },
             VideoDownloadEvent::Failed(error) => {
-                self.progress_bar.abandon_with_message(format!("{:?}", error));
+                self.progress_bar.abandon();
+                eprintln!("{}", error);
             },
         }
 
@@ -75,9 +68,9 @@ pub struct YtDlpDownloader;
 #[async_trait]
 impl Downloader for YtDlpDownloader {
     async fn download_video(&self, url: MaybeOwnedString, directory: MaybeOwnedPath) -> Fallible<BoxedStream<VideoDownloadEvent>> {
-        use VideoDownloadEvent::*;
+        use ::std::io::BufRead as _;
 
-        let command = duct::cmd!(
+        let command = ::duct::cmd!(
             "yt-dlp",
             &*url,
             "--paths", &*directory,
@@ -96,64 +89,67 @@ impl Downloader for YtDlpDownloader {
             "--color", "no_color",
         );
 
-        let reader_handle = command.stderr_to_stdout().reader()
-            .expect("Error: Failed to read stdout");
-        let reader = BufReader::new(reader_handle);
+        let reader_handle = command.stderr_to_stdout().reader()?;
+        let reader = ::std::io::BufReader::new(reader_handle);
 
-        static DOWNLOADING_REGEX: Lazy<Regex> = Lazy::new(|| Regex::new(
-            r"\[video-downloading\]\s*(?P<percent>\d+)(?:\.\d+)?%;(?P<eta>[^;]+);\s*(?P<size>[^;]+);\s*(?P<speed>[^\r\n]+)"
-        ).expect("Error: Invalid regex string"));
+        static DOWNLOADING_REGEX: ::once_cell::sync::Lazy<::regex::Regex> = regex!(r"\[video-downloading\]\s*(?P<percent>\d+)(?:\.\d+)?%;(?P<eta>[^;]+);\s*(?P<size>[^;]+);\s*(?P<speed>[^\r\n]+)");
+        static COMPLETED_REGEX: ::once_cell::sync::Lazy<::regex::Regex> = regex!(r"\[video-completed\](?P<filepath>[^;]+);(?P<id>[^;]+);(?P<title>[^;]+);(?P<album>[^;]+);(?P<artist>[^;]+);(?P<genre>[^\r\n]+)");
+        static FAILED_REGEX: ::once_cell::sync::Lazy<::regex::Regex> = regex!(r"^ERROR: \{(?P<error>[^}]*)\}$");
 
-        static COMPLETED_REGEX: Lazy<Regex> = Lazy::new(|| Regex::new(
-            r"\[video-completed\](?P<filepath>[^;]+);(?P<id>[^;]+);(?P<title>[^;]+);(?P<album>[^;]+);(?P<artist>[^;]+);(?P<genre>[^\r\n]+)"
-        ).expect("Error: Invalid regex string"));
-
-        Ok(Box::pin(stream! {
+        let events = ::async_stream::stream! {
             for line in reader.lines() {
                 let line = match line {
                     Ok(line) => line,
-                    Err(error) => {
-                        yield Failed(format!("Error: Failed to read line from stream: `{}`", error).into());
-                        break;
-                    },
+                    Err(_) => break,
                 };
 
                 if let Some(captures) = DOWNLOADING_REGEX.captures(&line) {
-                    yield Downloading {
-                        percentage: Self::parse_attr(&captures["percent"])
-                            .expect(&format!("Error: Failed to regex-capture `percent` from line `{}`", line))
-                            .parse()
-                            .expect(&format!("Error: Failed to parse `u8` from regex-captured string")),
-                        eta: Self::parse_attr(&captures["eta"])
-                            .unwrap_or("00:00".into()),
-                        size: Self::parse_attr(&captures["size"])
-                            .expect(&format!("Error: Failed to regex-capture `size` from line `{}`", line)),
-                        speed: Self::parse_attr(&captures["speed"])
-                            .expect(&format!("Error: Failed to regex-capture `speed` from line `{}`", line)),
-                    };
+                    if let (Some(percentage), Some(size), Some(speed)) = (
+                        Self::parse_attr(&captures["percent"]),
+                        Self::parse_attr(&captures["size"]),
+                        Self::parse_attr(&captures["speed"]),
+                    ) {
+                        let eta = Self::parse_attr(&captures["eta"]);
+
+                        yield VideoDownloadEvent::Downloading {
+                            percentage: percentage.parse().unwrap_or(0),
+                            eta: eta.unwrap_or("00:00".into()),
+                            size,
+                            speed,
+                        };
+                    }
+                    
                 } else if let Some(captures) = COMPLETED_REGEX.captures(&line) {
-                    yield Completed(Video {
-                        id: Self::parse_attr(&captures["id"])
-                            .expect(&format!("Error: Failed to regex-capture `id` from line `{}`", line)),
-                        metadata: VideoMetadata {
-                            title: Self::parse_attr(&captures["title"])
-                                .expect(&format!("Error: Failed to regex-capture `title` from `{}`", line)),
-                            album: Self::parse_attr(&captures["album"])
-                                .expect(&format!("Error: Failed to regex-capture `album` from `{}`", line)),
-                            artists: Self::parse_multivalued_attr(&captures["artist"]),
-                            genres: Self::parse_multivalued_attr(&captures["genre"]),
-                        },
-                        path: MaybeOwnedPath::Owned(PathBuf::from(
-                            &*Self::parse_attr(&captures["filepath"])
-                                .expect(&format!("Error: Failed to regex-capture `filepath` from line `{}`", line))
-                        )),
-                    });
-                } else {
-                    yield Failed(format!("Error: Failed to regex-capture line `{}`", line).into());
-                    break;
+                    if let (Some(id), Some(title), Some(album), Some(path)) = (
+                        Self::parse_attr(&captures["id"]),
+                        Self::parse_attr(&captures["title"]),
+                        Self::parse_attr(&captures["album"]),
+                        Self::parse_attr(&captures["filepath"]),
+                    ) {
+                        let artists = Self::parse_multivalued_attr(&captures["artist"]);
+                        let genres = Self::parse_multivalued_attr(&captures["genre"]);
+
+                        yield VideoDownloadEvent::Completed(Video {
+                            id,
+                            metadata: VideoMetadata {
+                                title,
+                                album,
+                                artists,
+                                genres,
+                            },
+                            path: ::std::path::PathBuf::from(&*path).into(),
+                        });
+                    }
+
+                } else if let Some(captures) = FAILED_REGEX.captures(&line) {
+                    if let Some(error) = Self::parse_attr(&captures["error"]) {
+                        yield VideoDownloadEvent::Failed(error);
+                    }
                 }
             }
-        }))
+        };
+
+        Ok(::std::boxed::Box::pin(events))
     }
 
     async fn download_playlist(&self, _url: MaybeOwnedString, _directory: MaybeOwnedPath) -> Fallible<(BoxedStream<PlaylistDownloadEvent>, BoxedStream<VideoDownloadEvent>)> {
@@ -222,7 +218,9 @@ pub struct GenericMetadataWriter;
 #[async_trait]
 impl MetadataWriter for GenericMetadataWriter {
     async fn write_video(&self, video: &Video) -> Fallible<()> {
-        use ::lofty::prelude::*;
+        use ::lofty::file::TaggedFileExt as _;
+        use ::lofty::tag::Accessor as _;
+        use ::lofty::tag::TagExt as _;
 
         let mut file = ::lofty::read_from_path(video.path.clone())?;
 
@@ -231,7 +229,7 @@ impl MetadataWriter for GenericMetadataWriter {
             None => match file.first_tag_mut() {
                 Some(tag) => tag,
                 None => {
-                    file.insert_tag(lofty::tag::Tag::new(file.primary_tag_type()));
+                    file.insert_tag(::lofty::tag::Tag::new(file.primary_tag_type()));
                     file.primary_tag_mut().unwrap()
                 },
             },

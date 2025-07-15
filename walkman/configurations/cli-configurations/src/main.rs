@@ -6,12 +6,11 @@ use clap::{value_parser, Arg, Command};
 use infrastructures::{DownloadVideoView, Id3MetadataWriter, YtDlpDownloader};
 use use_cases::{boundaries::{DownloadVideoInputBoundary, DownloadVideoRequestModel}, interactors::DownloadVideoInteractor};
 
-use crate::utils::aliases::{MaybeOwnedPath, MaybeOwnedString};
+use crate::utils::aliases::{Fallible, MaybeOwnedPath, MaybeOwnedString};
 
 #[tokio::main]
-#[allow(unused_variables)]
-async fn main() {
-    let download_video_view = Arc::new(DownloadVideoView::new());
+async fn main() -> Fallible<()> {
+    let download_video_view = Arc::new(DownloadVideoView::new()?);
     let downloader = Arc::new(YtDlpDownloader::new());
     let metadata_writer = Arc::new(Id3MetadataWriter::new());
 
@@ -49,8 +48,10 @@ async fn main() {
                 directory: MaybeOwnedPath::Owned(directory.to_path_buf()),
             };
 
-            download_video_interactor.apply(model).await;
+            download_video_interactor.apply(model).await?;
         },
         _ => unreachable!(),
     }
+
+    Ok(())
 }
