@@ -1,14 +1,32 @@
-pub fn add(left: u64, right: u64) -> u64 {
-    left + right
+pub(crate) mod utils;
+
+use crate::utils::aliases::MaybeOwnedPath;
+use crate::utils::aliases::MaybeOwnedString;
+
+#[derive(Debug)]
+pub struct Video {
+    pub id: MaybeOwnedString,
+    pub metadata: VideoMetadata,
+    pub path: MaybeOwnedPath,
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
+#[derive(Debug, Clone)]
+pub struct VideoMetadata {
+    pub title: MaybeOwnedString,
 
-    #[test]
-    fn it_works() {
-        let result = add(2, 2);
-        assert_eq!(result, 4);
-    }
+    pub album: MaybeOwnedString,
+    pub artists: Vec<MaybeOwnedString>,
+    pub genres: Vec<MaybeOwnedString>,
+}
+
+#[derive(Debug)]
+pub struct Playlist {
+    pub id: MaybeOwnedString,
+    pub metadata: PlaylistMetadata,
+    pub videos: Vec<Video>,
+}
+
+#[derive(Debug)]
+pub struct PlaylistMetadata {
+    pub title: MaybeOwnedString,
 }

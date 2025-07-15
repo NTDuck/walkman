@@ -2,8 +2,7 @@
 members = [
     "walkman/core/domain",
     "walkman/core/use-cases/",
-    "walkman/infrastructures/gateways-impl",
-    "walkman/infrastructures/interface-adapters",
+    "walkman/infrastructures",
     "walkman/configurations/*",
 ]
 resolver = "2"
@@ -16,6 +15,13 @@ publish = false
 
 [workspace.dependencies]
 # Cross-cutting concerns, centralized
+anyhow = "1.0.98"
+async-stream = "0.3.6"
+async-trait = "0.1.88"
+derive-new = "0.7.0"
+futures-core = "0.3.31"
+futures-util = "0.3.31"
+tokio = "1.46.1"
 
 # Crates that we choose to marry
 # See: https://blessed.rs/crates

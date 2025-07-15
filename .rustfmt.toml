@@ -6,7 +6,7 @@
 # blank_lines_lower_bound = 0
 # blank_lines_upper_bound = 1
 # brace_style = "SameLineWhere"
-# chain_width = 60
+chain_width = 40
 # color = "Auto"
 # combine_control_expr = true
 # comment_width = 80
