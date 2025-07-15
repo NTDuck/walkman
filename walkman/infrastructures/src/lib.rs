@@ -26,6 +26,8 @@ impl DownloadVideoView {
 #[async_trait]
 impl DownloadVideoOutputBoundary for DownloadVideoView {
     async fn update(&self, event: &VideoDownloadEvent) -> Fallible<()> {
+        use ::colored::Colorize as _;
+
         match event {
             VideoDownloadEvent::Downloading { percentage, eta, size, speed } => {
                 self.progress_bar.set_position(*percentage as u64);
@@ -34,11 +36,11 @@ impl DownloadVideoOutputBoundary for DownloadVideoView {
             },
             VideoDownloadEvent::Completed(video) => {
                 self.progress_bar.finish();
-                println!("Downloaded `{}`", video.metadata.title);
+                println!("Downloaded {}.", video.metadata.title.green().bold());
             },
             VideoDownloadEvent::Failed(error) => {
                 self.progress_bar.abandon();
-                eprintln!("{}", error);
+                eprintln!("{}", error.red().bold());
             },
         }
 
