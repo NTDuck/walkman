@@ -1,7 +1,7 @@
 use ::async_trait::async_trait;
 
-use crate::gateways::PlaylistEvent;
-use crate::gateways::VideoEvent;
+use crate::models::PlaylistEvent;
+use crate::models::VideoEvent;
 use crate::utils::aliases::Fallible;
 use crate::utils::aliases::MaybeOwnedPath;
 use crate::utils::aliases::MaybeOwnedString;

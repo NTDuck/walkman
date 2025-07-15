@@ -9,8 +9,8 @@ use crate::boundaries::DownloadVideoOutputBoundary;
 use crate::boundaries::DownloadVideoRequestModel;
 use crate::gateways::Downloader;
 use crate::gateways::MetadataWriter;
-use crate::gateways::PlaylistEvent;
-use crate::gateways::VideoEvent;
+use crate::models::PlaylistEvent;
+use crate::models::VideoEvent;
 use crate::utils::aliases::Fallible;
 
 #[derive(new)]
@@ -38,7 +38,7 @@ impl DownloadVideoInputBoundary for DownloadVideoInteractor {
         while let Some(event) = video_events.next().await {
             output_boundary.update(&event).await?;
 
-            if let VideoEvent::Success(event) = event {
+            if let VideoEvent::Completed(event) = event {
                 metadata_writer.write_video(&event.video).await?;
             }
         }
@@ -72,7 +72,7 @@ impl DownloadPlaylistInputBoundary for DownloadPlaylistInteractor {
             while let Some(event) = playlist_events.next().await {
                 DownloadPlaylistOutputBoundary::update(&*output_boundary, &event).await?;
 
-                if let PlaylistEvent::Success(event) = event {
+                if let PlaylistEvent::Completed(event) = event {
                     metadata_writer.write_playlist(&event.playlist).await?;
                 }
             }

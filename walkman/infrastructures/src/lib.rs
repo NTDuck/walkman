@@ -2,18 +2,20 @@ pub(crate) mod utils;
 
 use ::async_trait::async_trait;
 use ::derive_new::new;
+use domain::UnresolvedVideo;
 use ::domain::Video;
 use ::domain::VideoMetadata;
 use ::use_cases::boundaries::DownloadPlaylistOutputBoundary;
 use ::use_cases::boundaries::DownloadVideoOutputBoundary;
 use ::use_cases::gateways::Downloader;
 use ::use_cases::gateways::MetadataWriter;
-use ::use_cases::gateways::PlaylistEvent;
-use ::use_cases::gateways::VideoEvent;
-use use_cases::gateways::VideoDownloadingEvent;
-use use_cases::gateways::VideoErrorEvent;
-use use_cases::gateways::VideoSuccessEvent;
-use use_cases::gateways::VideoWarningEvent;
+use use_cases::models::PlaylistEvent;
+use use_cases::models::VideoCompletedEvent;
+use use_cases::models::VideoDownloadingEvent;
+use use_cases::models::VideoEvent;
+use use_cases::models::VideoFailedEvent;
+use use_cases::models::VideoStartedEvent;
+use use_cases::models::VideoWarningEvent;
 
 use crate::utils::aliases::BoxedStream;
 use crate::utils::aliases::Fallible;
@@ -41,18 +43,25 @@ impl DownloadVideoView {
 impl DownloadVideoOutputBoundary for DownloadVideoView {
     async fn update(&self, event: &VideoEvent) -> Fallible<()> {
         match event {
-            VideoEvent::Downloading(event) => self.update_on_downloading_video_event(event)?,
-            VideoEvent::Success(event) => self.update_on_success_video_event(event)?,
-            VideoEvent::Warning(event) => self.update_on_warning_video_event(event)?,
-            VideoEvent::Error(event) => self.update_on_error_video_event(event)?,
+            VideoEvent::Started(event) => self.update_on_video_started_event(event),
+            VideoEvent::Downloading(event) => self.update_on_video_downloading_event(event),
+            VideoEvent::Completed(event) => self.update_on_video_completed_video_event(event),
+            VideoEvent::Warning(event) => self.update_on_video_warning_event(event),
+            VideoEvent::Failed(event) => self.update_on_video_failed_event(event),
         }
-
-        Ok(())
     }
 }
 
 impl DownloadVideoView {
-    fn update_on_downloading_video_event(&self, event: &VideoDownloadingEvent) -> Fallible<()> {
+    fn update_on_video_started_event(&self, event: &VideoStartedEvent) -> Fallible<()> {
+        use ::colored::Colorize as _;
+
+        self.progress_bar.println(format!("Downloading {}", event.video.metadata.title.bold()));
+
+        Ok(())
+    }
+
+    fn update_on_video_downloading_event(&self, event: &VideoDownloadingEvent) -> Fallible<()> {
         self.progress_bar.set_position(event.percentage as u64);
         self.progress_bar
             .set_prefix(format!("{:>10} {:>10} {:>4}", event.size, event.speed, event.eta));
@@ -61,7 +70,7 @@ impl DownloadVideoView {
         Ok(())
     }
 
-    fn update_on_success_video_event(&self, event: &VideoSuccessEvent) -> Fallible<()> {
+    fn update_on_video_completed_video_event(&self, event: &VideoCompletedEvent) -> Fallible<()> {
         use ::colored::Colorize as _;
 
         let progress_bar_style = ::indicatif::ProgressStyle::with_template("{prefix} {bar:50.green} {msg}")?;
@@ -73,7 +82,7 @@ impl DownloadVideoView {
         Ok(())
     }
 
-    fn update_on_warning_video_event(&self, event: &VideoWarningEvent) -> Fallible<()> {
+    fn update_on_video_warning_event(&self, event: &VideoWarningEvent) -> Fallible<()> {
         use ::colored::Colorize as _;
 
         self.progress_bar.println(format!("{}", event.message.yellow().bold()));
@@ -81,7 +90,7 @@ impl DownloadVideoView {
         Ok(())
     }
 
-    fn update_on_error_video_event(&self, event: &VideoErrorEvent) -> Fallible<()> {
+    fn update_on_video_failed_event(&self, event: &VideoFailedEvent) -> Fallible<()> {
         use ::colored::Colorize as _;
 
         let progress_bar_style = ::indicatif::ProgressStyle::with_template("{prefix} {bar:50.red} {msg}")?;
@@ -121,26 +130,21 @@ impl Downloader for YtDlpDownloader {
             &*url,
             "--paths",
             &*directory,
-            "--format",
-            "bestaudio",
+            "--format bestaudio",
             "--extract-audio",
-            "--audio-format",
-            "mp3",
-            "--output",
-            "%(title)s.%(ext)s",
+            "--audio-format mp3",
+            "--output %(title)s.%(ext)s",
             "--quiet",
             "--newline",
             "--abort-on-error",
             "--no-playlist",
             "--force-overwrites",
             "--progress",
-            "--progress-template",
-            "[video-downloading]%(progress._percent_str)s;%(progress._eta_str)s;%(progress._total_bytes_str)s;%\
+            "--exec before_dl:echo [video-started]%(id)s;%(title)s;%(album)s;%(artist)s;%(genre)s",
+            "--progress-template [video-downloading]%(progress._percent_str)s;%(progress._eta_str)s;%(progress._total_bytes_str)s;%\
              (progress._speed_str)s",
-            "--exec",
-            "echo [video-completed]%(filepath)s;%(id)s;%(title)s;%(album)s;%(artist)s;%(genre)s",
-            "--color",
-            "no_color",
+            "--exec post_process:echo [video-completed]%(filepath)s;%(id)s;%(title)s;%(album)s;%(artist)s;%(genre)s",
+            "--color no_color",
         );
 
         let reader_handle = command.stderr_to_stdout().reader()?;
@@ -167,12 +171,33 @@ impl Downloader for YtDlpDownloader {
 
 impl YtDlpDownloader {
     fn parse_video_event(line: &str) -> Option<VideoEvent> {
-        Self::parse_video_downloading_event(line)
-            .map(VideoEvent::Downloading)
-            .or_else(|| Self::parse_video_success_event(line).map(VideoEvent::Success))
+        Self::parse_video_downloading_event(line).map(VideoEvent::Downloading)
+            .or_else(|| Self::parse_video_started_event(line).map(VideoEvent::Started))
+            .or_else(|| Self::parse_video_completed_event(line).map(VideoEvent::Completed))
             .or_else(|| Self::parse_video_warning_event(line).map(VideoEvent::Warning))
-            .or_else(|| Self::parse_video_error_event(line).map(VideoEvent::Error))
+            .or_else(|| Self::parse_video_failed_event(line).map(VideoEvent::Failed))
             .or_else(|| None)
+    }
+
+    fn parse_video_started_event(line: &str) -> Option<VideoStartedEvent> {
+        static REGEX: ::once_cell::sync::Lazy<::regex::Regex> = regex!(
+            r"\[video-started\](?P<id>[^;]+);(?P<title>[^;]+);(?P<album>[^;]+);(?P<artist>[^;]+);(?P<genre>[^\r\n]+)"
+        );
+
+        let captures = REGEX.captures(line)?;
+
+        let id = Self::parse_attr(&captures["id"])?;
+        let title = Self::parse_attr(&captures["title"])?;
+        let album = Self::parse_attr(&captures["album"])?;
+        let artists = Self::parse_multivalued_attr(&captures["artist"]);
+        let genres = Self::parse_multivalued_attr(&captures["genre"]);
+
+        let video = UnresolvedVideo {
+            id,
+            metadata: VideoMetadata { title, album, artists, genres },
+        };
+
+        Some(VideoStartedEvent { video })
     }
 
     fn parse_video_downloading_event(line: &str) -> Option<VideoDownloadingEvent> {
@@ -195,7 +220,7 @@ impl YtDlpDownloader {
         })
     }
 
-    fn parse_video_success_event(line: &str) -> Option<VideoSuccessEvent> {
+    fn parse_video_completed_event(line: &str) -> Option<VideoCompletedEvent> {
         static REGEX: ::once_cell::sync::Lazy<::regex::Regex> = regex!(
             r"\[video-completed\](?P<filepath>[^;]+);(?P<id>[^;]+);(?P<title>[^;]+);(?P<album>[^;]+);(?P<artist>[^;]+);(?P<genre>[^\r\n]+)"
         );
@@ -215,7 +240,7 @@ impl YtDlpDownloader {
             path: ::std::path::PathBuf::from(&*path).into(),
         };
 
-        Some(VideoSuccessEvent { video })
+        Some(VideoCompletedEvent { video })
     }
 
     fn parse_video_warning_event(line: &str) -> Option<VideoWarningEvent> {
@@ -227,13 +252,13 @@ impl YtDlpDownloader {
         Some(VideoWarningEvent { message })
     }
 
-    fn parse_video_error_event(line: &str) -> Option<VideoErrorEvent> {
+    fn parse_video_failed_event(line: &str) -> Option<VideoFailedEvent> {
         static REGEX: ::once_cell::sync::Lazy<::regex::Regex> = regex!(r"^ERROR:\s*(?P<message>.+)$");
 
         let captures = REGEX.captures(line)?;
         let message = Self::parse_attr(&captures["message"])?;
 
-        Some(VideoErrorEvent { message })
+        Some(VideoFailedEvent { message })
     }
 
     fn parse_multivalued_attr(captured: &str) -> Vec<MaybeOwnedString> {

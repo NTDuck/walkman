@@ -10,6 +10,12 @@ pub struct Video {
     pub path: MaybeOwnedPath,
 }
 
+#[derive(Debug)]
+pub struct UnresolvedVideo {
+    pub id: MaybeOwnedString,
+    pub metadata: VideoMetadata,
+}
+
 #[derive(Debug, Clone)]
 pub struct VideoMetadata {
     pub title: MaybeOwnedString,
@@ -27,6 +33,13 @@ pub struct Playlist {
 }
 
 #[derive(Debug)]
+pub struct UnresolvedPlaylist {
+    pub id: MaybeOwnedString,
+    pub metadata: PlaylistMetadata,
+}
+
+#[derive(Debug)]
 pub struct PlaylistMetadata {
     pub title: MaybeOwnedString,
+    pub size: usize,
 }
