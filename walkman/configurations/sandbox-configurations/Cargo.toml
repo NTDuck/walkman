@@ -7,6 +7,9 @@ repository.workspace = true
 publish.workspace = true
 
 [dependencies]
+async-stream = "*"
+futures-core = "*"
+futures-util = "*"
 duct = "*"
 tokio = { version = "*", features = ["full"] }
 anyhow = "*"

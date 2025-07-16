@@ -5,17 +5,16 @@ use ::derive_new::new;
 use ::domain::UnresolvedVideo;
 use ::domain::Video;
 use ::domain::VideoMetadata;
-use ::use_cases::boundaries::DownloadPlaylistOutputBoundary;
-use ::use_cases::boundaries::DownloadVideoOutputBoundary;
+use use_cases::boundaries::Update;
 use ::use_cases::gateways::Downloader;
 use ::use_cases::gateways::MetadataWriter;
+use use_cases::models::DiagnosticLevel;
+use use_cases::models::DownloadDiagnosticEvent;
 use ::use_cases::models::PlaylistDownloadEvent;
 use ::use_cases::models::VideoDownloadCompletedEvent;
 use ::use_cases::models::VideoDownloadProgressUpdatedEvent;
 use ::use_cases::models::VideoDownloadEvent;
-use ::use_cases::models::VideoFailedEvent;
 use ::use_cases::models::VideoDownloadStartedEvent;
-use ::use_cases::models::VideoWarningEvent;
 
 use crate::utils::aliases::BoxedStream;
 use crate::utils::aliases::Fallible;
@@ -40,81 +39,50 @@ impl DownloadVideoView {
 }
 
 #[async_trait]
-impl DownloadVideoOutputBoundary for DownloadVideoView {
+impl Update<VideoDownloadEvent> for DownloadVideoView {
     async fn update(&self, event: &VideoDownloadEvent) -> Fallible<()> {
         match event {
-            VideoDownloadEvent::Started(event) => self.update_on_video_started_event(event),
-            VideoDownloadEvent::ProgressUpdated(event) => self.update_on_video_downloading_event(event),
-            VideoDownloadEvent::Completed(event) => self.update_on_video_completed_video_event(event),
-            VideoDownloadEvent::Warning(event) => self.update_on_video_warning_event(event),
-            VideoDownloadEvent::Failed(event) => self.update_on_video_failed_event(event),
+            VideoDownloadEvent::Started(event) => self.update(event).await,
+            VideoDownloadEvent::ProgressUpdated(event) => self.update(event).await,
+            VideoDownloadEvent::Completed(event) => self.update(event).await,
         }
     }
 }
 
-impl DownloadVideoView {
-    fn update_on_video_started_event(&self, event: &VideoDownloadStartedEvent) -> Fallible<()> {
-        use ::colored::Colorize as _;
-
-        self.progress_bar
-            .println(format!("downloading `{}` ...", event.video.metadata.title.white().bold()));
-
-        Ok(())
-    }
-
-    fn update_on_video_downloading_event(&self, event: &VideoDownloadProgressUpdatedEvent) -> Fallible<()> {
-        self.progress_bar.set_position(event.percentage as u64);
-        self.progress_bar
-            .set_prefix(format!("{:>10} {:>10} {:>4}", event.size, event.speed, event.eta));
-        self.progress_bar.set_message(format!("{}%", event.percentage));
-
-        Ok(())
-    }
-
-    fn update_on_video_completed_video_event(&self, event: &VideoDownloadCompletedEvent) -> Fallible<()> {
-        use ::colored::Colorize as _;
-
-        let progress_bar_style = ::indicatif::ProgressStyle::with_template("{prefix} {bar:50.green} {msg}")?;
-        self.progress_bar.set_style(progress_bar_style);
-
-        self.progress_bar.finish();
-        println!(" downloaded `{}`.", event.video.metadata.title.green().bold());
-
-        Ok(())
-    }
-
-    fn update_on_video_warning_event(&self, event: &VideoWarningEvent) -> Fallible<()> {
-        use ::colored::Colorize as _;
-
-        self.progress_bar.println(format!("{}", event.message.yellow().bold()));
-
-        Ok(())
-    }
-
-    fn update_on_video_failed_event(&self, event: &VideoFailedEvent) -> Fallible<()> {
-        use ::colored::Colorize as _;
-
-        let progress_bar_style = ::indicatif::ProgressStyle::with_template("{prefix} {bar:50.red} {msg}")?;
-        self.progress_bar.set_style(progress_bar_style);
-
-        self.progress_bar.abandon();
-        eprintln!("{}", event.message.red().bold());
-
-        Ok(())
-    }
-}
-
-pub struct DownloadPlaylistView;
-
 #[async_trait]
-impl DownloadVideoOutputBoundary for DownloadPlaylistView {
-    async fn update(&self, _event: &VideoDownloadEvent) -> Fallible<()> { todo!() }
+impl Update<DownloadDiagnosticEvent> for DownloadVideoView {
+    async fn update(&self, event: &DownloadDiagnosticEvent) -> Fallible<()> {
+        use ::colored::Colorize as _;
+
+        match event.level {
+            DiagnosticLevel::Warning => {
+                self.progress_bar.println(format!("{}", event.message.yellow().bold()));
+            },
+
+            DiagnosticLevel::Error => {
+                let progress_bar_style = ::indicatif::ProgressStyle::with_template("{prefix} {bar:50.red} {msg}")?;
+                self.progress_bar.set_style(progress_bar_style);
+
+                self.progress_bar.abandon();
+                eprintln!("{}", event.message.red().bold());
+            },
+        }
+        
+        Ok(())
+    }
 }
 
-#[async_trait]
-impl DownloadPlaylistOutputBoundary for DownloadPlaylistView {
-    async fn update(&self, _event: &PlaylistDownloadEvent) -> Fallible<()> { todo!() }
-}
+// pub struct DownloadPlaylistView;
+
+// #[async_trait]
+// impl DownloadVideoOutputBoundary for DownloadPlaylistView {
+//     async fn update(&self, _event: &VideoDownloadEvent) -> Fallible<()> { todo!() }
+// }
+
+// #[async_trait]
+// impl DownloadPlaylistOutputBoundary for DownloadPlaylistView {
+//     async fn update(&self, _event: &PlaylistDownloadEvent) -> Fallible<()> { todo!() }
+// }
 
 #[derive(new)]
 pub struct YtDlpDownloader;
@@ -123,183 +91,86 @@ pub struct YtDlpDownloader;
 impl Downloader for YtDlpDownloader {
     async fn download_video(
         &self, url: MaybeOwnedString, directory: MaybeOwnedPath,
-    ) -> Fallible<BoxedStream<VideoDownloadEvent>> {
+    ) -> Fallible<(BoxedStream<VideoDownloadEvent>, BoxedStream<DownloadDiagnosticEvent>)> {
         use ::std::io::BufRead as _;
 
         #[rustfmt::skip]
-        let command = ::duct::cmd!(
-            "yt-dlp",
-            &*url,
-            "--paths", &*directory,
-            "--format", "bestaudio",
-            "--extract-audio",
-            "--audio-format", "mp3",
-            "--output", "%(title)s.%(ext)s",
-            "--quiet",
-            "--newline",
-            "--abort-on-error",
-            "--no-playlist",
-            "--color", "no_color",
-            "--force-overwrites",
-            "--progress",
-            "--print", "before_dl:[video-started]%(id)s;%(title)s;%(album)s;%(artist)s;%(genre)s",
-            "--progress-template", "[video-downloading]%(progress._percent_str)s;%(progress._eta_str)s;%(progress._total_bytes_str)s;%(progress._speed_str)s",
-            "--print", "post_process:[video-completed]%(filepath)s;%(id)s;%(title)s;%(album)s;%(artist)s;%(genre)s",
-        );
+        let mut process = ::std::process::Command::new("yt-dlp")
+            .args([
+                &*url,
+                "--paths", &directory.to_str().unwrap(),
+                "--format", "bestaudio",
+                "--extract-audio",
+                "--audio-format", "mp3",
+                "--output", "%(title)s.%(ext)s",
+                "--quiet",
+                "--newline",
+                "--abort-on-error",
+                "--no-playlist",
+                "--color", "no_color",
+                "--force-overwrites",
+                "--progress",
+                "--print", "before_dl:[video-started]%(id)s;%(title)s;%(album)s;%(artist)s;%(genre)s",
+                "--progress-template", "[video-downloading]%(progress._percent_str)s;%(progress._eta_str)s;%(progress._total_bytes_str)s;%(progress._speed_str)s",
+                "--print", "post_process:[video-completed]%(filepath)s;%(id)s;%(title)s;%(album)s;%(artist)s;%(genre)s",
+            ])
+            .stdout(::std::process::Stdio::piped())
+            .stderr(::std::process::Stdio::piped())
+            .spawn()?;
 
-        let reader_handle = command.stderr_to_stdout().reader()?;
-        let reader = ::std::io::BufReader::new(reader_handle);
+        let stdout = process.stdout.take().unwrap();
+        let stderr = process.stderr.take().unwrap();
 
-        let events = ::async_stream::stream! {
-            for event in reader.lines()
+        let stdout_reader = ::std::io::BufReader::new(stdout);
+        let stderr_reader = ::std::io::BufReader::new(stderr);
+
+        let video_events = ::async_stream::stream! {
+            use crate::private::FromYtDlpVideoDownloadOutput as _;
+
+            for event in stdout_reader.lines()
                 .filter_map(|line| line.ok())
-                .filter_map(|line| Self::parse_video_event(&line))
+                .filter_map(|line| VideoDownloadEvent::from_str(&line))
             {
                 yield event;
             }
         };
 
-        Ok(::std::boxed::Box::pin(events))
+        let diagnostic_events = ::async_stream::stream! {
+            use crate::private::FromYtDlpVideoDownloadOutput as _;
+
+            for event in stderr_reader.lines()
+                .filter_map(|line| line.ok())
+                .filter_map(|line| DownloadDiagnosticEvent::from_str(&line))
+            {
+                yield event;
+            }
+        };
+
+        Ok((
+            ::std::boxed::Box::pin(video_events),
+            ::std::boxed::Box::pin(diagnostic_events),
+        ))
     }
 
     async fn download_playlist(
-        &self, url: MaybeOwnedString, directory: MaybeOwnedPath,
-    ) -> Fallible<(BoxedStream<PlaylistDownloadEvent>, BoxedStream<VideoDownloadEvent>)> {
-        use ::std::io::BufRead as _;
+        &self, _url: MaybeOwnedString, _directory: MaybeOwnedPath,
+    ) -> Fallible<(BoxedStream<PlaylistDownloadEvent>, BoxedStream<VideoDownloadEvent>, BoxedStream<DownloadDiagnosticEvent>)> {
+        // use ::std::io::BufRead as _;
 
-        #[rustfmt::skip]
-        let command = ::duct::cmd!(
-            "yt-dlp",
-            &*url,
-            "--paths", &*directory,
-            "--quiet",
-            "--flat-playlist",
-            "--color", "no_color",
-            "--print", "playlist:[playlist-started]%(id)s;%(title)s",
-            "--print", "video:[playlist-started]%(url)s"
-        );
+        // #[rustfmt::skip]
+        // let command = ::duct::cmd!(
+        //     "yt-dlp",
+        //     &*url,
+        //     "--paths", &*directory,
+        //     "--quiet",
+        //     "--flat-playlist",
+        //     "--color", "no_color",
+        //     "--print", "playlist:[playlist-started]%(id)s;%(title)s",
+        //     "--print", "video:[playlist-started]%(url)s"
+        // );
 
-        
+        todo!()
     }
-}
-
-impl YtDlpDownloader {
-    fn parse_video_event(line: &str) -> Option<VideoDownloadEvent> {
-        Self::parse_video_downloading_event(line)
-            .map(VideoDownloadEvent::ProgressUpdated)
-            .or_else(|| Self::parse_video_started_event(line).map(VideoDownloadEvent::Started))
-            .or_else(|| Self::parse_video_completed_event(line).map(VideoDownloadEvent::Completed))
-            .or_else(|| Self::parse_video_warning_event(line).map(VideoDownloadEvent::Warning))
-            .or_else(|| Self::parse_video_failed_event(line).map(VideoDownloadEvent::Failed))
-            .or_else(|| None)
-    }
-
-    fn parse_video_started_event(line: &str) -> Option<VideoDownloadStartedEvent> {
-        static REGEX: ::once_cell::sync::Lazy<::regex::Regex> = regex!(
-            r"\[video-started\](?P<id>[^;]+);(?P<title>[^;]+);(?P<album>[^;]+);(?P<artist>[^;]+);(?P<genre>[^\r\n]+)"
-        );
-
-        let captures = REGEX.captures(line)?;
-
-        let id = Self::parse_attr(&captures["id"])?;
-        let title = Self::parse_attr(&captures["title"])?;
-        let album = Self::parse_attr(&captures["album"])?;
-        let artists = Self::parse_multivalued_attr(&captures["artist"]);
-        let genres = Self::parse_multivalued_attr(&captures["genre"]);
-
-        let video = UnresolvedVideo {
-            id,
-            metadata: VideoMetadata { title, album, artists, genres },
-        };
-
-        Some(VideoDownloadStartedEvent { video })
-    }
-
-    fn parse_video_downloading_event(line: &str) -> Option<VideoDownloadProgressUpdatedEvent> {
-        static REGEX: ::once_cell::sync::Lazy<::regex::Regex> = regex!(
-            r"\[video-downloading\]\s*(?P<percent>\d+)(?:\.\d+)?%;(?P<eta>[^;]+);\s*(?P<size>[^;]+);\s*(?P<speed>[^\r\n]+)"
-        );
-
-        let captures = REGEX.captures(line)?;
-
-        let percentage = Self::parse_attr(&captures["percent"])?;
-        let eta = Self::parse_attr(&captures["eta"]).unwrap_or("00:00".into());
-        let size = Self::parse_attr(&captures["size"])?;
-        let speed = Self::parse_attr(&captures["speed"])?;
-
-        Some(VideoDownloadProgressUpdatedEvent {
-            percentage: percentage.parse().ok()?,
-            eta,
-            size,
-            speed,
-        })
-    }
-
-    fn parse_video_completed_event(line: &str) -> Option<VideoDownloadCompletedEvent> {
-        static REGEX: ::once_cell::sync::Lazy<::regex::Regex> = regex!(
-            r"\[video-completed\](?P<filepath>[^;]+);(?P<id>[^;]+);(?P<title>[^;]+);(?P<album>[^;]+);(?P<artist>[^;]+);(?P<genre>[^\r\n]+)"
-        );
-
-        let captures = REGEX.captures(line)?;
-
-        let id = Self::parse_attr(&captures["id"])?;
-        let title = Self::parse_attr(&captures["title"])?;
-        let album = Self::parse_attr(&captures["album"])?;
-        let artists = Self::parse_multivalued_attr(&captures["artist"]);
-        let genres = Self::parse_multivalued_attr(&captures["genre"]);
-        let path = Self::parse_attr(&captures["filepath"])?;
-
-        let video = Video {
-            id,
-            metadata: VideoMetadata { title, album, artists, genres },
-            path: ::std::path::PathBuf::from(&*path).into(),
-        };
-
-        Some(VideoDownloadCompletedEvent { video })
-    }
-
-    fn parse_video_warning_event(line: &str) -> Option<VideoWarningEvent> {
-        static REGEX: ::once_cell::sync::Lazy<::regex::Regex> = regex!(r"^WARNING:\s*(?P<message>.+)$");
-
-        let captures = REGEX.captures(line)?;
-        let message = Self::parse_attr(&captures["message"])?;
-
-        Some(VideoWarningEvent { message })
-    }
-
-    fn parse_video_failed_event(line: &str) -> Option<VideoFailedEvent> {
-        static REGEX: ::once_cell::sync::Lazy<::regex::Regex> = regex!(r"^ERROR:\s*(?P<message>.+)$");
-
-        let captures = REGEX.captures(line)?;
-        let message = Self::parse_attr(&captures["message"])?;
-
-        Some(VideoFailedEvent { message })
-    }
-
-    fn parse_multivalued_attr(captured: &str) -> Vec<MaybeOwnedString> {
-        match Self::parse_attr(captured) {
-            Some(attrs) => attrs
-                .split(',')
-                .map(Self::normalize)
-                .map(|attr| attr.to_owned().into())
-                .collect(),
-            None => Vec::new(),
-        }
-    }
-
-    fn parse_attr(captured: &str) -> Option<MaybeOwnedString> {
-        let captured = Self::normalize(captured);
-
-        if captured == "NA" {
-            None
-        } else {
-            Some(captured.to_owned().into())
-        }
-    }
-
-    fn normalize(captured: &str) -> &str { captured.trim() }
-
-    fn parse_
 }
 
 #[derive(new)]
@@ -354,5 +225,176 @@ impl MetadataWriter for Id3MetadataWriter {
         tag.write_to_path(&video.path, ::id3::Version::Id3v23)?;
 
         Ok(())
+    }
+}
+
+mod private {
+    use super::*;
+
+    use crate::DownloadVideoView;
+
+    #[async_trait]
+    impl Update<VideoDownloadStartedEvent> for DownloadVideoView {
+        async fn update(&self, event: &VideoDownloadStartedEvent) -> Fallible<()> {
+            use ::colored::Colorize as _;
+
+            self.progress_bar
+                .println(format!("downloading `{}` ...", event.video.metadata.title.white().bold()));
+
+            Ok(())
+        }
+    }
+
+    #[async_trait]
+    impl Update<VideoDownloadProgressUpdatedEvent> for DownloadVideoView {
+        async fn update(&self, event: &VideoDownloadProgressUpdatedEvent) -> Fallible<()> {
+            self.progress_bar.set_position(event.percentage as u64);
+            self.progress_bar
+                .set_prefix(format!("{:>10} {:>10} {:>4}", event.size, event.speed, event.eta));
+            self.progress_bar.set_message(format!("{}%", event.percentage));
+
+            Ok(())
+        }
+    }
+
+    #[async_trait]
+    impl Update<VideoDownloadCompletedEvent> for DownloadVideoView {
+        async fn update(&self, event: &VideoDownloadCompletedEvent) -> Fallible<()> {
+            use ::colored::Colorize as _;
+
+            let progress_bar_style = ::indicatif::ProgressStyle::with_template("{prefix} {bar:50.green} {msg}")?;
+            self.progress_bar.set_style(progress_bar_style);
+
+            self.progress_bar.finish();
+            println!(" downloaded `{}`.", event.video.metadata.title.green().bold());
+
+            Ok(())
+        }
+    }
+
+    pub trait FromYtDlpVideoDownloadOutput: Sized {
+        fn from_str(string: &str) -> Option<Self>;
+    }
+
+    impl FromYtDlpVideoDownloadOutput for VideoDownloadEvent {
+        fn from_str(string: &str) -> Option<Self> {
+            VideoDownloadProgressUpdatedEvent::from_str(string).map(Self::ProgressUpdated)
+                .or(VideoDownloadStartedEvent::from_str(string).map(Self::Started))
+                .or(VideoDownloadCompletedEvent::from_str(string).map(Self::Completed))
+        }
+    }
+
+    impl FromYtDlpVideoDownloadOutput for VideoDownloadStartedEvent {
+        fn from_str(string: &str) -> Option<Self> {
+            static REGEX: ::once_cell::sync::Lazy<::regex::Regex> = regex!(
+                r"\[video-started\](?P<id>[^;]+);(?P<title>[^;]+);(?P<album>[^;]+);(?P<artist>[^;]+);(?P<genre>[^\r\n]+)"
+            );
+
+            let captures = REGEX.captures(string)?;
+
+            let id = parse_attr(&captures["id"])?;
+            let title = parse_attr(&captures["title"])?;
+            let album = parse_attr(&captures["album"])?;
+            let artists = parse_multivalued_attr(&captures["artist"]);
+            let genres = parse_multivalued_attr(&captures["genre"]);
+
+            let video = UnresolvedVideo {
+                id,
+                metadata: VideoMetadata { title, album, artists, genres },
+            };
+
+            Some(Self { video })
+        }
+    }
+
+    impl FromYtDlpVideoDownloadOutput for VideoDownloadProgressUpdatedEvent {
+        fn from_str(string: &str) -> Option<Self> {
+            static REGEX: ::once_cell::sync::Lazy<::regex::Regex> = regex!(
+                r"\[video-downloading\]\s*(?P<percent>\d+)(?:\.\d+)?%;(?P<eta>[^;]+);\s*(?P<size>[^;]+);\s*(?P<speed>[^\r\n]+)"
+            );
+
+            let captures = REGEX.captures(string)?;
+
+            let percentage = parse_attr(&captures["percent"])?;
+            let eta = parse_attr(&captures["eta"]).unwrap_or("00:00".into());
+            let size = parse_attr(&captures["size"])?;
+            let speed = parse_attr(&captures["speed"])?;
+
+            Some(Self {
+                percentage: percentage.parse().ok()?,
+                eta,
+                size,
+                speed,
+            })
+        }
+    }
+
+    impl FromYtDlpVideoDownloadOutput for VideoDownloadCompletedEvent {
+        fn from_str(string: &str) -> Option<Self> {
+            static REGEX: ::once_cell::sync::Lazy<::regex::Regex> = regex!(
+                r"\[video-completed\](?P<filepath>[^;]+);(?P<id>[^;]+);(?P<title>[^;]+);(?P<album>[^;]+);(?P<artist>[^;]+);(?P<genre>[^\r\n]+)"
+            );
+
+            let captures = REGEX.captures(string)?;
+
+            let id = parse_attr(&captures["id"])?;
+            let title = parse_attr(&captures["title"])?;
+            let album = parse_attr(&captures["album"])?;
+            let artists = parse_multivalued_attr(&captures["artist"]);
+            let genres = parse_multivalued_attr(&captures["genre"]);
+            let path = parse_attr(&captures["filepath"])?;
+
+            let video = Video {
+                id,
+                metadata: VideoMetadata { title, album, artists, genres },
+                path: ::std::path::PathBuf::from(&*path).into(),
+            };
+
+            Some(Self { video })
+        }
+    }
+
+    impl FromYtDlpVideoDownloadOutput for DownloadDiagnosticEvent {
+        fn from_str(string: &str) -> Option<Self> {
+            static REGEX: ::once_cell::sync::Lazy<::regex::Regex> = regex!(
+                r"^(?P<level>WARNING|ERROR):\s*(?P<message>.+)$"
+            );
+
+            let captures = REGEX.captures(string)?;
+            
+            let message = parse_attr(&captures["message"])?;
+            let level = match &captures["level"] {
+                "WARNING" => DiagnosticLevel::Warning,
+                "ERROR" => DiagnosticLevel::Error,
+                _ => return None,
+            };
+
+            Some(Self { level, message })
+        }
+    }
+
+    fn parse_multivalued_attr(string: &str) -> Vec<MaybeOwnedString> {
+        match parse_attr(string) {
+            Some(attrs) => attrs
+                .split(',')
+                .map(normalize)
+                .map(|attr| attr.to_owned().into())
+                .collect(),
+            None => Vec::new(),
+        }
+    }
+
+    fn parse_attr(string: &str) -> Option<MaybeOwnedString> {
+        let string = normalize(string);
+
+        if string == "NA" {
+            None
+        } else {
+            Some(string.to_owned().into())
+        }
+    }
+
+    fn normalize(string: &str) -> &str {
+        string.trim()
     }
 }

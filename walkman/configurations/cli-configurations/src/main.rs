@@ -4,7 +4,6 @@ use ::infrastructures::DownloadVideoView;
 use ::infrastructures::Id3MetadataWriter;
 use ::infrastructures::YtDlpDownloader;
 use ::use_cases::boundaries::DownloadPlaylistRequestModel;
-use ::use_cases::boundaries::DownloadVideoInputBoundary;
 use ::use_cases::boundaries::DownloadVideoRequestModel;
 use ::use_cases::interactors::DownloadVideoInteractor;
 
@@ -57,6 +56,8 @@ async fn main() -> Fallible<()> {
 
     match command.get_matches().subcommand() {
         Some(("download-video", matches)) => {
+            use ::use_cases::boundaries::Accept as _;
+
             let url = matches
                 .get_one::<::std::string::String>("url")
                 .expect("Error: Missing required argument `url`");
@@ -64,12 +65,12 @@ async fn main() -> Fallible<()> {
                 .get_one::<::std::path::PathBuf>("directory")
                 .expect("Error: Missing required argument `directory`");
 
-            let model = DownloadVideoRequestModel {
+            let request = DownloadVideoRequestModel {
                 url: url.to_owned().into(),
                 directory: directory.to_owned().into(),
             };
 
-            download_video_interactor.apply(model).await?;
+            download_video_interactor.accept(request).await?;
         },
 
         Some(("download-playlist", matches)) => {
@@ -80,12 +81,10 @@ async fn main() -> Fallible<()> {
                 .get_one::<::std::path::PathBuf>("directory")
                 .expect("Error: Missing required argument `directory`");
 
-            let model = DownloadPlaylistRequestModel {
+            let _request = DownloadPlaylistRequestModel {
                 url: url.to_owned().into(),
                 directory: directory.to_owned().into(),
             };
-
-            let _ = model;
 
             todo!()
         },

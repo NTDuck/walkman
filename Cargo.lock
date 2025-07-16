@@ -420,7 +420,6 @@ dependencies = [
  "colored",
  "derive-new",
  "domain",
- "duct",
  "futures-core",
  "futures-util",
  "id3",
@@ -687,8 +686,11 @@ name = "sandbox-configurations"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "async-stream",
  "duct",
  "futures",
+ "futures-core",
+ "futures-util",
  "regex",
  "tokio",
 ]
