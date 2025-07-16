@@ -11,6 +11,7 @@ duct = "*"
 tokio = { version = "*", features = ["full"] }
 anyhow = "*"
 futures = "*"
+regex = "*"
 
 [lints]
 workspace = true

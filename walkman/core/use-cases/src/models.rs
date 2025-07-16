@@ -1,24 +1,21 @@
-use domain::{Playlist, UnresolvedPlaylist};
-use ::domain::{UnresolvedVideo, Video};
+use ::domain::UnresolvedVideo;
+use ::domain::Video;
+use ::domain::Playlist;
+use ::domain::UnresolvedPlaylist;
 
 use crate::utils::aliases::MaybeOwnedString;
 
-#[derive(Debug)]
-pub enum VideoEvent {
-    Started(VideoStartedEvent),
-    Downloading(VideoDownloadingEvent),
-    Completed(VideoCompletedEvent),
-    Warning(VideoWarningEvent),
-    Failed(VideoFailedEvent),
+pub enum VideoDownloadEvent {
+    Started(VideoDownloadStartedEvent),
+    ProgressUpdated(VideoDownloadProgressUpdatedEvent),
+    Completed(VideoDownloadCompletedEvent),
 }
 
-#[derive(Debug)]
-pub struct VideoStartedEvent {
+pub struct VideoDownloadStartedEvent {
     pub video: UnresolvedVideo,
 }
 
-#[derive(Debug)]
-pub struct VideoDownloadingEvent {
+pub struct VideoDownloadProgressUpdatedEvent {
     pub percentage: u8,
 
     pub eta: MaybeOwnedString,
@@ -26,52 +23,37 @@ pub struct VideoDownloadingEvent {
     pub speed: MaybeOwnedString,
 }
 
-#[derive(Debug)]
-pub struct VideoCompletedEvent {
+pub struct VideoDownloadCompletedEvent {
     pub video: Video,
 }
 
-#[derive(Debug)]
-pub struct VideoWarningEvent {
-    pub message: MaybeOwnedString,
+pub enum PlaylistDownloadEvent {
+    Started(PlaylistDownloadStartedEvent),
+    ProgressUpdated(PlaylistDownloadProgressUpdatedEvent),
+    Completed(PlaylistDownloadCompletedEvent),
 }
 
-#[derive(Debug)]
-pub struct VideoFailedEvent {
-    pub message: MaybeOwnedString,
-}
-
-
-#[derive(Debug)]
-pub enum PlaylistEvent {
-    Started(PlaylistStartedEvent),
-    VideoCompleted(PlaylistVideoDownloadedEvent),
-    Completed(PlaylistCompletedEvent),
-    Warning(PlaylistWarningEvent),
-    Failed(PlaylistFailedEvent),
-}
-
-#[derive(Debug)]
-pub struct PlaylistStartedEvent {
+pub struct PlaylistDownloadStartedEvent {
     pub playlist: UnresolvedPlaylist,
 }
 
-#[derive(Debug)]
-pub struct PlaylistVideoDownloadedEvent {
+pub struct PlaylistDownloadProgressUpdatedEvent {
     pub video: Video,
+
+    pub completed: usize,
+    pub total: usize,
 }
 
-#[derive(Debug)]
-pub struct PlaylistCompletedEvent {
+pub struct PlaylistDownloadCompletedEvent {
     pub playlist: Playlist,
 }
 
-#[derive(Debug)]
-pub struct PlaylistWarningEvent {
+pub struct DownloadDiagnosticEvent {
+    pub level: DiagnosticLevel,
     pub message: MaybeOwnedString,
 }
 
-#[derive(Debug)]
-pub struct PlaylistFailedEvent {
-    pub message: MaybeOwnedString,
+pub enum DiagnosticLevel {
+    Warning,
+    Error,
 }

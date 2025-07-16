@@ -1,4 +1,4 @@
-mod utils;
+pub(crate) mod utils;
 
 use ::infrastructures::DownloadVideoView;
 use ::infrastructures::Id3MetadataWriter;
@@ -42,7 +42,9 @@ async fn main() -> Fallible<()> {
                 .arg(
                     ::clap::Arg::new("url")
                         .short('i')
-                        .default_value("https://youtube.com/playlist?list=PLYXU4Ir4-8GPeP4lKT9aevhyhbSoHR04M&si=Lf2wNtv6hpcAH3us")
+                        .default_value(
+                            "https://youtube.com/playlist?list=PLYXU4Ir4-8GPeP4lKT9aevhyhbSoHR04M&si=Lf2wNtv6hpcAH3us",
+                        )
                         .value_parser(::clap::value_parser!(::std::string::String)),
                 )
                 .arg(

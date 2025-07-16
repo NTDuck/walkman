@@ -1,14 +1,18 @@
 use ::async_trait::async_trait;
 
-use crate::models::PlaylistEvent;
-use crate::models::VideoEvent;
+use crate::models::DownloadDiagnosticEvent;
+use crate::models::PlaylistDownloadEvent;
+use crate::models::VideoDownloadEvent;
 use crate::utils::aliases::Fallible;
 use crate::utils::aliases::MaybeOwnedPath;
 use crate::utils::aliases::MaybeOwnedString;
 
-#[async_trait]
-pub trait DownloadVideoInputBoundary {
-    async fn apply(&self, model: DownloadVideoRequestModel) -> Fallible<()>;
+pub trait DownloadVideoInputBoundary: Accept<DownloadVideoRequestModel> {}
+
+impl<InputBoundary> DownloadVideoInputBoundary for InputBoundary
+where
+    InputBoundary: Accept<DownloadVideoRequestModel>,
+{
 }
 
 pub struct DownloadVideoRequestModel {
@@ -16,14 +20,20 @@ pub struct DownloadVideoRequestModel {
     pub directory: MaybeOwnedPath,
 }
 
-#[async_trait]
-pub trait DownloadVideoOutputBoundary: Send + Sync {
-    async fn update(&self, event: &VideoEvent) -> Fallible<()>;
+pub trait DownloadVideoOutputBoundary: Update<VideoDownloadEvent> + Update<DownloadDiagnosticEvent> {}
+
+impl<OutputBoundary> DownloadVideoOutputBoundary for OutputBoundary
+where
+    OutputBoundary: Update<VideoDownloadEvent> + Update<DownloadDiagnosticEvent>,
+{
 }
 
-#[async_trait]
-pub trait DownloadPlaylistInputBoundary {
-    async fn apply(&self, model: DownloadPlaylistRequestModel) -> Fallible<()>;
+pub trait DownloadPlaylistInputBoundary: Accept<DownloadPlaylistRequestModel> {}
+
+impl<InputBoundary> DownloadPlaylistInputBoundary for InputBoundary
+where
+    InputBoundary: Accept<DownloadPlaylistRequestModel>,
+{
 }
 
 pub struct DownloadPlaylistRequestModel {
@@ -31,7 +41,20 @@ pub struct DownloadPlaylistRequestModel {
     pub directory: MaybeOwnedPath,
 }
 
+pub trait DownloadPlaylistOutputBoundary: Update<PlaylistDownloadEvent> + Update<VideoDownloadEvent> + Update<DownloadDiagnosticEvent> {}
+
+impl<OutputBoundary> DownloadPlaylistOutputBoundary for OutputBoundary
+where
+    OutputBoundary: Update<PlaylistDownloadEvent> + Update<VideoDownloadEvent> + Update<DownloadDiagnosticEvent>,
+{
+}
+
 #[async_trait]
-pub trait DownloadPlaylistOutputBoundary: DownloadVideoOutputBoundary {
-    async fn update(&self, event: &PlaylistEvent) -> Fallible<()>;
+pub trait Accept<Request>: Send + Sync {
+    async fn accept(&self, request: Request) -> Fallible<()>;
+}
+
+#[async_trait]
+pub trait Update<Event>: Send + Sync {
+    async fn update(&self, event: &Event) -> Fallible<()>;
 }

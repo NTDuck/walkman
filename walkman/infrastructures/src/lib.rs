@@ -2,20 +2,20 @@ pub(crate) mod utils;
 
 use ::async_trait::async_trait;
 use ::derive_new::new;
-use domain::UnresolvedVideo;
+use ::domain::UnresolvedVideo;
 use ::domain::Video;
 use ::domain::VideoMetadata;
 use ::use_cases::boundaries::DownloadPlaylistOutputBoundary;
 use ::use_cases::boundaries::DownloadVideoOutputBoundary;
 use ::use_cases::gateways::Downloader;
 use ::use_cases::gateways::MetadataWriter;
-use use_cases::models::PlaylistEvent;
-use use_cases::models::VideoCompletedEvent;
-use use_cases::models::VideoDownloadingEvent;
-use use_cases::models::VideoEvent;
-use use_cases::models::VideoFailedEvent;
-use use_cases::models::VideoStartedEvent;
-use use_cases::models::VideoWarningEvent;
+use ::use_cases::models::PlaylistDownloadEvent;
+use ::use_cases::models::VideoDownloadCompletedEvent;
+use ::use_cases::models::VideoDownloadProgressUpdatedEvent;
+use ::use_cases::models::VideoDownloadEvent;
+use ::use_cases::models::VideoFailedEvent;
+use ::use_cases::models::VideoDownloadStartedEvent;
+use ::use_cases::models::VideoWarningEvent;
 
 use crate::utils::aliases::BoxedStream;
 use crate::utils::aliases::Fallible;
@@ -41,27 +41,28 @@ impl DownloadVideoView {
 
 #[async_trait]
 impl DownloadVideoOutputBoundary for DownloadVideoView {
-    async fn update(&self, event: &VideoEvent) -> Fallible<()> {
+    async fn update(&self, event: &VideoDownloadEvent) -> Fallible<()> {
         match event {
-            VideoEvent::Started(event) => self.update_on_video_started_event(event),
-            VideoEvent::Downloading(event) => self.update_on_video_downloading_event(event),
-            VideoEvent::Completed(event) => self.update_on_video_completed_video_event(event),
-            VideoEvent::Warning(event) => self.update_on_video_warning_event(event),
-            VideoEvent::Failed(event) => self.update_on_video_failed_event(event),
+            VideoDownloadEvent::Started(event) => self.update_on_video_started_event(event),
+            VideoDownloadEvent::ProgressUpdated(event) => self.update_on_video_downloading_event(event),
+            VideoDownloadEvent::Completed(event) => self.update_on_video_completed_video_event(event),
+            VideoDownloadEvent::Warning(event) => self.update_on_video_warning_event(event),
+            VideoDownloadEvent::Failed(event) => self.update_on_video_failed_event(event),
         }
     }
 }
 
 impl DownloadVideoView {
-    fn update_on_video_started_event(&self, event: &VideoStartedEvent) -> Fallible<()> {
+    fn update_on_video_started_event(&self, event: &VideoDownloadStartedEvent) -> Fallible<()> {
         use ::colored::Colorize as _;
 
-        self.progress_bar.println(format!("Downloading {}", event.video.metadata.title.bold()));
+        self.progress_bar
+            .println(format!("downloading `{}` ...", event.video.metadata.title.white().bold()));
 
         Ok(())
     }
 
-    fn update_on_video_downloading_event(&self, event: &VideoDownloadingEvent) -> Fallible<()> {
+    fn update_on_video_downloading_event(&self, event: &VideoDownloadProgressUpdatedEvent) -> Fallible<()> {
         self.progress_bar.set_position(event.percentage as u64);
         self.progress_bar
             .set_prefix(format!("{:>10} {:>10} {:>4}", event.size, event.speed, event.eta));
@@ -70,14 +71,14 @@ impl DownloadVideoView {
         Ok(())
     }
 
-    fn update_on_video_completed_video_event(&self, event: &VideoCompletedEvent) -> Fallible<()> {
+    fn update_on_video_completed_video_event(&self, event: &VideoDownloadCompletedEvent) -> Fallible<()> {
         use ::colored::Colorize as _;
 
         let progress_bar_style = ::indicatif::ProgressStyle::with_template("{prefix} {bar:50.green} {msg}")?;
         self.progress_bar.set_style(progress_bar_style);
 
         self.progress_bar.finish();
-        println!("Downloaded {}.", event.video.metadata.title.green().bold());
+        println!(" downloaded `{}`.", event.video.metadata.title.green().bold());
 
         Ok(())
     }
@@ -107,12 +108,12 @@ pub struct DownloadPlaylistView;
 
 #[async_trait]
 impl DownloadVideoOutputBoundary for DownloadPlaylistView {
-    async fn update(&self, _event: &VideoEvent) -> Fallible<()> { todo!() }
+    async fn update(&self, _event: &VideoDownloadEvent) -> Fallible<()> { todo!() }
 }
 
 #[async_trait]
 impl DownloadPlaylistOutputBoundary for DownloadPlaylistView {
-    async fn update(&self, _event: &PlaylistEvent) -> Fallible<()> { todo!() }
+    async fn update(&self, _event: &PlaylistDownloadEvent) -> Fallible<()> { todo!() }
 }
 
 #[derive(new)]
@@ -122,29 +123,28 @@ pub struct YtDlpDownloader;
 impl Downloader for YtDlpDownloader {
     async fn download_video(
         &self, url: MaybeOwnedString, directory: MaybeOwnedPath,
-    ) -> Fallible<BoxedStream<VideoEvent>> {
+    ) -> Fallible<BoxedStream<VideoDownloadEvent>> {
         use ::std::io::BufRead as _;
 
+        #[rustfmt::skip]
         let command = ::duct::cmd!(
             "yt-dlp",
             &*url,
-            "--paths",
-            &*directory,
-            "--format bestaudio",
+            "--paths", &*directory,
+            "--format", "bestaudio",
             "--extract-audio",
-            "--audio-format mp3",
-            "--output %(title)s.%(ext)s",
+            "--audio-format", "mp3",
+            "--output", "%(title)s.%(ext)s",
             "--quiet",
             "--newline",
             "--abort-on-error",
             "--no-playlist",
+            "--color", "no_color",
             "--force-overwrites",
             "--progress",
-            "--exec before_dl:echo [video-started]%(id)s;%(title)s;%(album)s;%(artist)s;%(genre)s",
-            "--progress-template [video-downloading]%(progress._percent_str)s;%(progress._eta_str)s;%(progress._total_bytes_str)s;%\
-             (progress._speed_str)s",
-            "--exec post_process:echo [video-completed]%(filepath)s;%(id)s;%(title)s;%(album)s;%(artist)s;%(genre)s",
-            "--color no_color",
+            "--print", "before_dl:[video-started]%(id)s;%(title)s;%(album)s;%(artist)s;%(genre)s",
+            "--progress-template", "[video-downloading]%(progress._percent_str)s;%(progress._eta_str)s;%(progress._total_bytes_str)s;%(progress._speed_str)s",
+            "--print", "post_process:[video-completed]%(filepath)s;%(id)s;%(title)s;%(album)s;%(artist)s;%(genre)s",
         );
 
         let reader_handle = command.stderr_to_stdout().reader()?;
@@ -163,23 +163,38 @@ impl Downloader for YtDlpDownloader {
     }
 
     async fn download_playlist(
-        &self, _url: MaybeOwnedString, _directory: MaybeOwnedPath,
-    ) -> Fallible<(BoxedStream<PlaylistEvent>, BoxedStream<VideoEvent>)> {
-        todo!()
+        &self, url: MaybeOwnedString, directory: MaybeOwnedPath,
+    ) -> Fallible<(BoxedStream<PlaylistDownloadEvent>, BoxedStream<VideoDownloadEvent>)> {
+        use ::std::io::BufRead as _;
+
+        #[rustfmt::skip]
+        let command = ::duct::cmd!(
+            "yt-dlp",
+            &*url,
+            "--paths", &*directory,
+            "--quiet",
+            "--flat-playlist",
+            "--color", "no_color",
+            "--print", "playlist:[playlist-started]%(id)s;%(title)s",
+            "--print", "video:[playlist-started]%(url)s"
+        );
+
+        
     }
 }
 
 impl YtDlpDownloader {
-    fn parse_video_event(line: &str) -> Option<VideoEvent> {
-        Self::parse_video_downloading_event(line).map(VideoEvent::Downloading)
-            .or_else(|| Self::parse_video_started_event(line).map(VideoEvent::Started))
-            .or_else(|| Self::parse_video_completed_event(line).map(VideoEvent::Completed))
-            .or_else(|| Self::parse_video_warning_event(line).map(VideoEvent::Warning))
-            .or_else(|| Self::parse_video_failed_event(line).map(VideoEvent::Failed))
+    fn parse_video_event(line: &str) -> Option<VideoDownloadEvent> {
+        Self::parse_video_downloading_event(line)
+            .map(VideoDownloadEvent::ProgressUpdated)
+            .or_else(|| Self::parse_video_started_event(line).map(VideoDownloadEvent::Started))
+            .or_else(|| Self::parse_video_completed_event(line).map(VideoDownloadEvent::Completed))
+            .or_else(|| Self::parse_video_warning_event(line).map(VideoDownloadEvent::Warning))
+            .or_else(|| Self::parse_video_failed_event(line).map(VideoDownloadEvent::Failed))
             .or_else(|| None)
     }
 
-    fn parse_video_started_event(line: &str) -> Option<VideoStartedEvent> {
+    fn parse_video_started_event(line: &str) -> Option<VideoDownloadStartedEvent> {
         static REGEX: ::once_cell::sync::Lazy<::regex::Regex> = regex!(
             r"\[video-started\](?P<id>[^;]+);(?P<title>[^;]+);(?P<album>[^;]+);(?P<artist>[^;]+);(?P<genre>[^\r\n]+)"
         );
@@ -197,10 +212,10 @@ impl YtDlpDownloader {
             metadata: VideoMetadata { title, album, artists, genres },
         };
 
-        Some(VideoStartedEvent { video })
+        Some(VideoDownloadStartedEvent { video })
     }
 
-    fn parse_video_downloading_event(line: &str) -> Option<VideoDownloadingEvent> {
+    fn parse_video_downloading_event(line: &str) -> Option<VideoDownloadProgressUpdatedEvent> {
         static REGEX: ::once_cell::sync::Lazy<::regex::Regex> = regex!(
             r"\[video-downloading\]\s*(?P<percent>\d+)(?:\.\d+)?%;(?P<eta>[^;]+);\s*(?P<size>[^;]+);\s*(?P<speed>[^\r\n]+)"
         );
@@ -212,7 +227,7 @@ impl YtDlpDownloader {
         let size = Self::parse_attr(&captures["size"])?;
         let speed = Self::parse_attr(&captures["speed"])?;
 
-        Some(VideoDownloadingEvent {
+        Some(VideoDownloadProgressUpdatedEvent {
             percentage: percentage.parse().ok()?,
             eta,
             size,
@@ -220,7 +235,7 @@ impl YtDlpDownloader {
         })
     }
 
-    fn parse_video_completed_event(line: &str) -> Option<VideoCompletedEvent> {
+    fn parse_video_completed_event(line: &str) -> Option<VideoDownloadCompletedEvent> {
         static REGEX: ::once_cell::sync::Lazy<::regex::Regex> = regex!(
             r"\[video-completed\](?P<filepath>[^;]+);(?P<id>[^;]+);(?P<title>[^;]+);(?P<album>[^;]+);(?P<artist>[^;]+);(?P<genre>[^\r\n]+)"
         );
@@ -240,7 +255,7 @@ impl YtDlpDownloader {
             path: ::std::path::PathBuf::from(&*path).into(),
         };
 
-        Some(VideoCompletedEvent { video })
+        Some(VideoDownloadCompletedEvent { video })
     }
 
     fn parse_video_warning_event(line: &str) -> Option<VideoWarningEvent> {
@@ -283,6 +298,8 @@ impl YtDlpDownloader {
     }
 
     fn normalize(captured: &str) -> &str { captured.trim() }
+
+    fn parse_
 }
 
 #[derive(new)]
