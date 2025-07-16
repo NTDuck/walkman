@@ -13,7 +13,7 @@ use crate::utils::aliases::MaybeOwnedString;
 #[async_trait]
 pub trait Downloader: Send + Sync {
     async fn download_video(&self, url: MaybeOwnedString, directory: MaybeOwnedPath) -> Fallible<(BoxedStream<VideoDownloadEvent>, BoxedStream<DownloadDiagnosticEvent>)>;
-    async fn download_playlist(&self, url: MaybeOwnedString, directory: MaybeOwnedPath) -> Fallible<(BoxedStream<PlaylistDownloadEvent>, BoxedStream<VideoDownloadEvent>, BoxedStream<DownloadDiagnosticEvent>)>;
+    async fn download_playlist(&self, url: MaybeOwnedString, directory: MaybeOwnedPath) -> Fallible<(BoxedStream<PlaylistDownloadEvent>, ::std::boxed::Box<[BoxedStream<VideoDownloadEvent>]>, BoxedStream<DownloadDiagnosticEvent>)>;
 }
 
 #[async_trait]

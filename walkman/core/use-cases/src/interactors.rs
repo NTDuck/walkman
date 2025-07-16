@@ -117,6 +117,21 @@ mod private {
     }
 
     #[async_trait]
+    impl Accept<::std::boxed::Box<[BoxedStream<VideoDownloadEvent>]>> for DownloadPlaylistInteractor {
+        async fn accept(&self, streams: ::std::boxed::Box<[BoxedStream<VideoDownloadEvent>]>) -> Fallible<()> {
+            let futures = streams
+                .into_vec()
+                .into_iter()
+                .map(|stream| self.accept(stream))
+                .collect::<Vec<_>>();
+
+            ::futures_util::future::try_join_all(futures).await?;
+
+            Ok(())
+        }
+    }
+
+    #[async_trait]
     impl Accept<BoxedStream<VideoDownloadEvent>> for DownloadPlaylistInteractor {
         async fn accept(&self, events: BoxedStream<VideoDownloadEvent>) -> Fallible<()> {
             use ::futures_util::StreamExt as _;

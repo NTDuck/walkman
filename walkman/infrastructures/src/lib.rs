@@ -153,23 +153,70 @@ impl Downloader for YtDlpDownloader {
     }
 
     async fn download_playlist(
-        &self, _url: MaybeOwnedString, _directory: MaybeOwnedPath,
+        &self, url: MaybeOwnedString, directory: MaybeOwnedPath,
     ) -> Fallible<(BoxedStream<PlaylistDownloadEvent>, BoxedStream<VideoDownloadEvent>, BoxedStream<DownloadDiagnosticEvent>)> {
-        // use ::std::io::BufRead as _;
+        use ::std::io::BufRead as _;
 
-        // #[rustfmt::skip]
-        // let command = ::duct::cmd!(
-        //     "yt-dlp",
-        //     &*url,
-        //     "--paths", &*directory,
-        //     "--quiet",
-        //     "--flat-playlist",
-        //     "--color", "no_color",
-        //     "--print", "playlist:[playlist-started]%(id)s;%(title)s",
-        //     "--print", "video:[playlist-started]%(url)s"
-        // );
+        #[rustfmt::skip]
+        let mut process = ::std::process::Command::new("yt-dlp")
+            .args([
+                &*url,
+                "--paths", &directory.to_str().unwrap(),
+                "--quiet",
+                "--flat-playlist",
+                "--color", "no_color",
+                "--print", "playlist:[playlist-started:metadata]%(id)s;%(title)s",
+                "--print", "video:[playlist-started:url]%(url)s"
+            ])
+            .stdout(::std::process::Stdio::piped())
+            .stderr(::std::process::Stdio::piped())
+            .spawn()?;
 
-        todo!()
+        let stdout = process.stdout.take().unwrap();
+        let stderr = process.stderr.take().unwrap();
+
+        let stdout_reader = ::std::io::BufReader::new(stdout);
+        let stderr_reader = ::std::io::BufReader::new(stderr);
+
+        static PLAYLIST_METADATA_REGEX: ::once_cell::sync::Lazy<::regex::Regex> = regex!(
+            r"\[playlist-started:metadata\];(?P<id>[^;]+);(?P<title>[^;]+)"
+        );
+
+        static PLAYLIST_VIDEO_URL_REGEX: ::once_cell::sync::Lazy<::regex::Regex> = regex!(
+            r"\[playlist-started:url\];(?P<url>[^;]+)"
+        );        
+
+        let playlist_events = ::async_stream::stream! {
+            
+        };
+
+        let video_events = ::async_stream::stream! {
+            use crate::private::FromYtDlpVideoDownloadOutput as _;
+
+            for event in stdout_reader.lines()
+                .filter_map(|line| line.ok())
+                .filter_map(|line| VideoDownloadEvent::from_str(&line))
+            {
+                yield event;
+            }
+        };
+
+        let diagnostic_events = ::async_stream::stream! {
+            use crate::private::FromYtDlpVideoDownloadOutput as _;
+
+            for event in stderr_reader.lines()
+                .filter_map(|line| line.ok())
+                .filter_map(|line| DownloadDiagnosticEvent::from_str(&line))
+            {
+                yield event;
+            }
+        };
+
+        Ok((
+            ::std::boxed::Box::pin(playlist_events),
+            ::std::boxed::Box::pin(video_events),
+            ::std::boxed::Box::pin(diagnostic_events),
+        ))
     }
 }
 
@@ -229,6 +276,8 @@ impl MetadataWriter for Id3MetadataWriter {
 }
 
 mod private {
+    use use_cases::models::PlaylistDownloadStartedEvent;
+
     use super::*;
 
     use crate::DownloadVideoView;
@@ -396,5 +445,9 @@ mod private {
 
     fn normalize(string: &str) -> &str {
         string.trim()
+    }
+
+    pub trait FromYtDlpPlaylistDownloadOutput: Sized {
+        fn from_str(string: &str) -> Option<Self>;
     }
 }
