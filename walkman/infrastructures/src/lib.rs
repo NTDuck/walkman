@@ -2,6 +2,7 @@ pub(crate) mod utils;
 
 use ::async_trait::async_trait;
 use ::derive_new::new;
+use domain::Playlist;
 use ::domain::UnresolvedVideo;
 use ::domain::Video;
 use ::domain::VideoMetadata;
@@ -10,7 +11,9 @@ use ::use_cases::gateways::Downloader;
 use ::use_cases::gateways::MetadataWriter;
 use ::use_cases::models::DiagnosticLevel;
 use ::use_cases::models::DownloadDiagnosticEvent;
+use use_cases::models::PlaylistDownloadCompletedEvent;
 use ::use_cases::models::PlaylistDownloadEvent;
+use ::use_cases::models::PlaylistDownloadProgressUpdatedEvent;
 use ::use_cases::models::PlaylistDownloadStartedEvent;
 use ::use_cases::models::VideoDownloadCompletedEvent;
 use ::use_cases::models::VideoDownloadProgressUpdatedEvent;
@@ -205,25 +208,7 @@ impl Downloader for YtDlpDownloader {
 
         let stdout = process.stdout.take().unwrap();
         let stderr = process.stderr.take().unwrap();
-
-        let playlist_video_urls = ::tokio::task::spawn_blocking({
-            let playlist_event_stream_tx = playlist_event_stream_tx.clone();
-
-            move || {
-                let reader = ::std::io::BufReader::new(stdout);
-
-                let lines = reader.lines()
-                    .filter_map(|line| line.ok());
-
-                let (playlist_started_event, playlist_video_urls) =
-                    <(PlaylistDownloadStartedEvent, Vec<MaybeOwnedString>)>::from_lines(lines).unwrap();
-
-                playlist_event_stream_tx.send(PlaylistDownloadEvent::Started(playlist_started_event))?;
-
-                Ok::<_, ::anyhow::Error>(playlist_video_urls)
-            }
-        }).await??;
-
+        
         ::tokio::task::spawn_blocking({
             let diagnostic_event_stream_tx = diagnostic_event_stream_tx.clone();
 
@@ -237,44 +222,82 @@ impl Downloader for YtDlpDownloader {
             }
         });
 
+        let playlist = ::tokio::task::spawn_blocking({
+            let playlist_event_stream_tx = playlist_event_stream_tx.clone();
+
+            move || {
+                let reader = ::std::io::BufReader::new(stdout);
+
+                let lines = reader.lines()
+                    .filter_map(|line| line.ok());
+
+                let event = PlaylistDownloadStartedEvent::from_lines(lines).unwrap();
+                let playlist = event.playlist.clone();
+
+                playlist_event_stream_tx.send(PlaylistDownloadEvent::Started(event))?;
+
+                Ok::<_, ::anyhow::Error>(playlist)
+            }
+        }).await??;
+
+        let completed = ::std::sync::Arc::new(::std::sync::atomic::AtomicUsize::new(0));
+        let total = playlist.metadata.video_urls.len();
+
+        let playlist_videos: ::std::sync::Arc<::tokio::sync::Mutex<Vec<_>>> =
+            ::std::sync::Arc::new(::tokio::sync::Mutex::new(Vec::with_capacity(total)));
+
         let playlist_video_urls: ::std::sync::Arc<::tokio::sync::Mutex<::std::collections::VecDeque<_>>> =
-            ::std::sync::Arc::new(::tokio::sync::Mutex::new(playlist_video_urls.into()));
+            ::std::sync::Arc::new(::tokio::sync::Mutex::new(playlist.metadata.video_urls.clone().into()));
 
         for index in 0..self.configurations.concurrent_video_downloads {
             ::tokio::spawn({
                 let this = self.clone();
 
-                let _playlist_event_stream_tx = playlist_event_stream_tx.clone();
+                let playlist_event_stream_tx = playlist_event_stream_tx.clone();
                 let video_event_stream_tx = video_event_stream_txs[index].clone();
                 let diagnostic_event_stream_tx = diagnostic_event_stream_tx.clone();
 
-                let playlist_video_urls = playlist_video_urls.clone();
                 let directory = directory.clone();
+                let completed = completed.clone();
+
+                let playlist_videos = playlist_videos.clone();
+                let playlist_video_urls = playlist_video_urls.clone();
 
                 async move {
                     while let Some(playlist_video_url) = playlist_video_urls.lock().await.pop_front() {
                         let (video_event_stream, video_diagnostic_event_stream) = this.download_video(playlist_video_url, directory.clone()).await?;
 
-                        ::tokio::spawn({
-                            let video_event_stream_tx = video_event_stream_tx.clone();
-
-                            async move {
+                        ::tokio::try_join!(
+                            async {
                                 use ::futures_util::StreamExt as _;
 
                                 ::futures_util::pin_mut!(video_event_stream);
 
                                 while let Some(event) = video_event_stream.next().await {
+                                    match event {
+                                        VideoDownloadEvent::Completed(VideoDownloadCompletedEvent { ref video }) => {
+                                            completed.fetch_add(1, ::std::sync::atomic::Ordering::Relaxed);
+                                            playlist_videos.lock().await.push(video.clone());
+
+                                            let event = PlaylistDownloadProgressUpdatedEvent {
+                                                video: video.clone(),
+
+                                                completed: completed.load(::std::sync::atomic::Ordering::Relaxed),
+                                                total,
+                                            };
+
+                                            playlist_event_stream_tx.send(PlaylistDownloadEvent::ProgressUpdated(event))?;
+                                        },
+                                        _ => {},
+                                    }
+
                                     video_event_stream_tx.send(event)?;
                                 }
 
                                 Ok::<_, ::anyhow::Error>(())
-                            }
-                        });
+                            },
 
-                        ::tokio::spawn({
-                            let diagnostic_event_stream_tx = diagnostic_event_stream_tx.clone();
-
-                            async move {
+                            async {
                                 use ::futures_util::StreamExt as _;
                             
                                 ::futures_util::pin_mut!(video_diagnostic_event_stream);
@@ -284,14 +307,23 @@ impl Downloader for YtDlpDownloader {
                                 }
 
                                 Ok::<_, ::anyhow::Error>(())
-                            }
-                        });
+                            },
+                        )?;
                     }
 
                     Ok::<_, ::anyhow::Error>(())
                 }
             });
         }
+
+        let playlist = Playlist {
+            id: playlist.id,
+            metadata: playlist.metadata,
+            videos: ::std::mem::take(&mut *playlist_videos.lock().await),
+        };
+        
+        let event = PlaylistDownloadCompletedEvent { playlist };
+        playlist_event_stream_tx.send(PlaylistDownloadEvent::Completed(event))?;
 
         let playlist_event_stream = ::async_stream::stream! {
             while let Some(event) = playlist_event_stream_rx.recv().await {
@@ -560,7 +592,7 @@ mod private {
             Self: Sized;
     }
 
-    impl FromYtDlpPlaylistDownloadOutput for (PlaylistDownloadStartedEvent, Vec<MaybeOwnedString>) {
+    impl FromYtDlpPlaylistDownloadOutput for PlaylistDownloadStartedEvent {
         fn from_lines<I, S>(lines: I) -> Option<Self>
         where
             I: IntoIterator<Item = S>,
@@ -575,12 +607,12 @@ mod private {
                 r"\[playlist-started:metadata\];(?P<id>[^;]+);(?P<title>[^;]+)"
             );
 
-            let mut urls = Vec::new();
+            let mut video_urls = Vec::new();
 
             for line in lines {
                 if let Some(captures) = URL_REGEX.captures(line.as_ref()) {
-                    let url = parse_attr(&captures["url"])?;
-                    urls.push(url);
+                    let video_url = parse_attr(&captures["url"])?;
+                    video_urls.push(video_url);
 
                 } else if let Some(captures) = METADATA_REGEX.captures(line.as_ref()) {
                     let id = parse_attr(&captures["id"])?;
@@ -588,13 +620,10 @@ mod private {
 
                     let playlist = UnresolvedPlaylist {
                         id,
-                        metadata: PlaylistMetadata {
-                            title,
-                            size: urls.len(),
-                        },
+                        metadata: PlaylistMetadata { title, video_urls },
                     };
 
-                    return Some((PlaylistDownloadStartedEvent { playlist }, urls))
+                    return Some(Self { playlist })
                 }
             }
 

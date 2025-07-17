@@ -3,6 +3,7 @@ pub(crate) mod utils;
 use crate::utils::aliases::MaybeOwnedPath;
 use crate::utils::aliases::MaybeOwnedString;
 
+#[derive(Clone)]
 pub struct Video {
     pub id: MaybeOwnedString,
     pub metadata: VideoMetadata,
@@ -14,6 +15,7 @@ pub struct UnresolvedVideo {
     pub metadata: VideoMetadata,
 }
 
+#[derive(Clone)]
 pub struct VideoMetadata {
     pub title: MaybeOwnedString,
 
@@ -28,12 +30,14 @@ pub struct Playlist {
     pub videos: Vec<Video>,
 }
 
+#[derive(Clone)]
 pub struct UnresolvedPlaylist {
     pub id: MaybeOwnedString,
     pub metadata: PlaylistMetadata,
 }
 
+#[derive(Clone)]
 pub struct PlaylistMetadata {
     pub title: MaybeOwnedString,
-    pub size: usize,
+    pub video_urls: Vec<MaybeOwnedString>,
 }
