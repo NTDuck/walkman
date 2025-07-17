@@ -23,11 +23,11 @@ pub struct DownloadVideoInteractor {
 impl Accept<DownloadVideoRequestModel> for DownloadVideoInteractor {
     async fn accept(&self, request: DownloadVideoRequestModel) -> Fallible<()> {
         let DownloadVideoRequestModel { url, directory } = request;
-        let (video_events, diagnostic_events) = self.downloader.download_video(url, directory).await?;
+        let (video_event_stream, diagnostic_event_stream) = self.downloader.download_video(url, directory).await?;
 
         ::tokio::try_join!(
-            self.accept(video_events),
-            self.accept(diagnostic_events),
+            self.accept(video_event_stream),
+            self.accept(diagnostic_event_stream),
         )?;
 
         Ok(())
@@ -46,12 +46,12 @@ pub struct DownloadPlaylistInteractor {
 impl Accept<DownloadPlaylistRequestModel> for DownloadPlaylistInteractor {
     async fn accept(&self, request: DownloadPlaylistRequestModel) -> Fallible<()> {
         let DownloadPlaylistRequestModel { url, directory } = request;
-        let (playlist_events, video_events, diagnostic_events) = self.downloader.download_playlist(url, directory).await?;
+        let (playlist_event_stream, video_event_streams, diagnostic_event_stream) = self.downloader.download_playlist(url, directory).await?;
 
         ::tokio::try_join!(
-            self.accept(playlist_events),
-            self.accept(video_events),
-            self.accept(diagnostic_events),
+            self.accept(playlist_event_stream),
+            self.accept(video_event_streams),
+            self.accept(diagnostic_event_stream),
         )?;
 
         Ok(())
@@ -65,12 +65,12 @@ mod private {
 
     #[async_trait]
     impl Accept<BoxedStream<VideoDownloadEvent>> for DownloadVideoInteractor {
-        async fn accept(&self, events: BoxedStream<VideoDownloadEvent>) -> Fallible<()> {
+        async fn accept(&self, event_stream: BoxedStream<VideoDownloadEvent>) -> Fallible<()> {
             use ::futures_util::StreamExt as _;
             
-            ::futures_util::pin_mut!(events);
+            ::futures_util::pin_mut!(event_stream);
 
-            while let Some(event) = events.next().await {
+            while let Some(event) = event_stream.next().await {
                 self.output_boundary.update(&event).await?;
 
                 if let VideoDownloadEvent::Completed(event) = event {
@@ -84,12 +84,12 @@ mod private {
 
     #[async_trait]
     impl Accept<BoxedStream<DownloadDiagnosticEvent>> for DownloadVideoInteractor {
-        async fn accept(&self, events: BoxedStream<DownloadDiagnosticEvent>) -> Fallible<()> {
+        async fn accept(&self, event_stream: BoxedStream<DownloadDiagnosticEvent>) -> Fallible<()> {
             use ::futures_util::StreamExt as _;
 
-            ::futures_util::pin_mut!(events);
+            ::futures_util::pin_mut!(event_stream);
 
-            while let Some(event) = events.next().await {
+            while let Some(event) = event_stream.next().await {
                 self.output_boundary.update(&event).await?;
             }
 
@@ -99,12 +99,12 @@ mod private {
 
     #[async_trait]
     impl Accept<BoxedStream<PlaylistDownloadEvent>> for DownloadPlaylistInteractor {
-        async fn accept(&self, events: BoxedStream<PlaylistDownloadEvent>) -> Fallible<()> {
+        async fn accept(&self, event_stream: BoxedStream<PlaylistDownloadEvent>) -> Fallible<()> {
             use ::futures_util::StreamExt as _;
 
-            ::futures_util::pin_mut!(events);
+            ::futures_util::pin_mut!(event_stream);
 
-            while let Some(event) = events.next().await {
+            while let Some(event) = event_stream.next().await {
                 self.output_boundary.update(&event).await?;
 
                 if let PlaylistDownloadEvent::Completed(event) = event {
@@ -118,8 +118,8 @@ mod private {
 
     #[async_trait]
     impl Accept<::std::boxed::Box<[BoxedStream<VideoDownloadEvent>]>> for DownloadPlaylistInteractor {
-        async fn accept(&self, streams: ::std::boxed::Box<[BoxedStream<VideoDownloadEvent>]>) -> Fallible<()> {
-            let futures = streams
+        async fn accept(&self, event_streams: ::std::boxed::Box<[BoxedStream<VideoDownloadEvent>]>) -> Fallible<()> {
+            let futures = event_streams
                 .into_vec()
                 .into_iter()
                 .map(|stream| self.accept(stream))
@@ -133,12 +133,12 @@ mod private {
 
     #[async_trait]
     impl Accept<BoxedStream<VideoDownloadEvent>> for DownloadPlaylistInteractor {
-        async fn accept(&self, events: BoxedStream<VideoDownloadEvent>) -> Fallible<()> {
+        async fn accept(&self, event_stream: BoxedStream<VideoDownloadEvent>) -> Fallible<()> {
             use ::futures_util::StreamExt as _;
 
-            ::futures_util::pin_mut!(events);
+            ::futures_util::pin_mut!(event_stream);
 
-            while let Some(event) = events.next().await {
+            while let Some(event) = event_stream.next().await {
                 self.output_boundary.update(&event).await?;
             }
 
@@ -148,12 +148,12 @@ mod private {
 
     #[async_trait]
     impl Accept<BoxedStream<DownloadDiagnosticEvent>> for DownloadPlaylistInteractor {
-        async fn accept(&self, events: BoxedStream<DownloadDiagnosticEvent>) -> Fallible<()> {
+        async fn accept(&self, event_stream: BoxedStream<DownloadDiagnosticEvent>) -> Fallible<()> {
             use ::futures_util::StreamExt as _;
 
-            ::futures_util::pin_mut!(events);
+            ::futures_util::pin_mut!(event_stream);
 
-            while let Some(event) = events.next().await {
+            while let Some(event) = event_stream.next().await {
                 self.output_boundary.update(&event).await?;
             }
 

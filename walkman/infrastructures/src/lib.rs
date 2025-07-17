@@ -5,11 +5,11 @@ use ::derive_new::new;
 use ::domain::UnresolvedVideo;
 use ::domain::Video;
 use ::domain::VideoMetadata;
-use use_cases::boundaries::Update;
+use ::use_cases::boundaries::Update;
 use ::use_cases::gateways::Downloader;
 use ::use_cases::gateways::MetadataWriter;
-use use_cases::models::DiagnosticLevel;
-use use_cases::models::DownloadDiagnosticEvent;
+use ::use_cases::models::DiagnosticLevel;
+use ::use_cases::models::DownloadDiagnosticEvent;
 use ::use_cases::models::PlaylistDownloadEvent;
 use ::use_cases::models::VideoDownloadCompletedEvent;
 use ::use_cases::models::VideoDownloadProgressUpdatedEvent;
@@ -85,7 +85,13 @@ impl Update<DownloadDiagnosticEvent> for DownloadVideoView {
 // }
 
 #[derive(new)]
-pub struct YtDlpDownloader;
+pub struct YtDlpDownloader {
+    configurations: YtDlpDownloaderConfigurations,
+}
+
+pub struct YtDlpDownloaderConfigurations {
+    pub concurrent_video_downloads: usize,
+}
 
 #[async_trait]
 impl Downloader for YtDlpDownloader {
@@ -93,12 +99,16 @@ impl Downloader for YtDlpDownloader {
         &self, url: MaybeOwnedString, directory: MaybeOwnedPath,
     ) -> Fallible<(BoxedStream<VideoDownloadEvent>, BoxedStream<DownloadDiagnosticEvent>)> {
         use ::std::io::BufRead as _;
+        use crate::private::FromYtDlpVideoDownloadOutput as _;
+
+        let (video_event_stream_tx, mut video_event_stream_rx) = ::tokio::sync::mpsc::unbounded_channel();
+        let (diagnostic_event_stream_tx, mut diagnostic_event_stream_rx) = ::tokio::sync::mpsc::unbounded_channel();
 
         #[rustfmt::skip]
         let mut process = ::std::process::Command::new("yt-dlp")
             .args([
                 &*url,
-                "--paths", &directory.to_str().unwrap(),
+                "--paths", &directory.to_string_lossy(),
                 "--format", "bestaudio",
                 "--extract-audio",
                 "--audio-format", "mp3",
@@ -112,7 +122,7 @@ impl Downloader for YtDlpDownloader {
                 "--progress",
                 "--print", "before_dl:[video-started]%(id)s;%(title)s;%(album)s;%(artist)s;%(genre)s",
                 "--progress-template", "[video-downloading]%(progress._percent_str)s;%(progress._eta_str)s;%(progress._total_bytes_str)s;%(progress._speed_str)s",
-                "--print", "post_process:[video-completed]%(filepath)s;%(id)s;%(title)s;%(album)s;%(artist)s;%(genre)s",
+                "--print", "after_move:[video-completed]%(filepath)s;%(id)s;%(title)s;%(album)s;%(artist)s;%(genre)s",
             ])
             .stdout(::std::process::Stdio::piped())
             .stderr(::std::process::Stdio::piped())
@@ -121,102 +131,151 @@ impl Downloader for YtDlpDownloader {
         let stdout = process.stdout.take().unwrap();
         let stderr = process.stderr.take().unwrap();
 
-        let stdout_reader = ::std::io::BufReader::new(stdout);
-        let stderr_reader = ::std::io::BufReader::new(stderr);
+        ::tokio::task::spawn_blocking(move || {
+            let reader = ::std::io::BufReader::new(stdout);
 
-        let video_events = ::async_stream::stream! {
-            use crate::private::FromYtDlpVideoDownloadOutput as _;
-
-            for event in stdout_reader.lines()
+            reader.lines()
                 .filter_map(|line| line.ok())
-                .filter_map(|line| VideoDownloadEvent::from_str(&line))
-            {
+                .filter_map(|line| VideoDownloadEvent::from_line(&line))
+                .try_for_each(|event| video_event_stream_tx.send(event))
+        });
+
+        ::tokio::task::spawn_blocking(move || {
+            let reader = ::std::io::BufReader::new(stderr);
+
+            reader.lines()
+                .filter_map(|line| line.ok())
+                .filter_map(|line| DownloadDiagnosticEvent::from_line(&line))
+                .try_for_each(|event| diagnostic_event_stream_tx.send(event))
+        });
+
+        let video_event_stream = ::async_stream::stream! {
+            while let Some(event) = video_event_stream_rx.recv().await {
                 yield event;
             }
         };
 
-        let diagnostic_events = ::async_stream::stream! {
-            use crate::private::FromYtDlpVideoDownloadOutput as _;
-
-            for event in stderr_reader.lines()
-                .filter_map(|line| line.ok())
-                .filter_map(|line| DownloadDiagnosticEvent::from_str(&line))
-            {
+        let diagnostic_event_stream = ::async_stream::stream! {
+            while let Some(event) = diagnostic_event_stream_rx.recv().await {
                 yield event;
             }
         };
 
         Ok((
-            ::std::boxed::Box::pin(video_events),
-            ::std::boxed::Box::pin(diagnostic_events),
+            ::std::boxed::Box::pin(video_event_stream),
+            ::std::boxed::Box::pin(diagnostic_event_stream),
         ))
     }
 
     async fn download_playlist(
         &self, url: MaybeOwnedString, directory: MaybeOwnedPath,
-    ) -> Fallible<(BoxedStream<PlaylistDownloadEvent>, BoxedStream<VideoDownloadEvent>, BoxedStream<DownloadDiagnosticEvent>)> {
-        use ::std::io::BufRead as _;
+    ) -> Fallible<(BoxedStream<PlaylistDownloadEvent>, ::std::boxed::Box<[BoxedStream<VideoDownloadEvent>]>, BoxedStream<DownloadDiagnosticEvent>)> {
+        // use ::std::io::BufRead as _;
+        // use crate::private::FromYtDlpVideoDownloadOutput as _;
+        // use crate::private::FromYtDlpPlaylistDownloadOutput as _;
 
-        #[rustfmt::skip]
-        let mut process = ::std::process::Command::new("yt-dlp")
-            .args([
-                &*url,
-                "--paths", &directory.to_str().unwrap(),
-                "--quiet",
-                "--flat-playlist",
-                "--color", "no_color",
-                "--print", "playlist:[playlist-started:metadata]%(id)s;%(title)s",
-                "--print", "video:[playlist-started:url]%(url)s"
-            ])
-            .stdout(::std::process::Stdio::piped())
-            .stderr(::std::process::Stdio::piped())
-            .spawn()?;
+        // let (playlist_event_stream_rx, mut playlist_event_stream_tx) = ::tokio::sync::mpsc::unbounded_channel();
+        // let (video_event_stream_rxs, mut video_event_stream_txs): (Vec<_>, Vec<_>) = (0..self.configurations.concurrent_video_downloads)
+        //     .map(|_| ::tokio::sync::mpsc::unbounded_channel())
+        //     .unzip();
+        // let (diagnostic_event_stream_rx, mut diagnostic_event_stream_tx) = ::tokio::sync::mpsc::unbounded_channel();
 
-        let stdout = process.stdout.take().unwrap();
-        let stderr = process.stderr.take().unwrap();
+        // #[rustfmt::skip]
+        // let mut process = ::std::process::Command::new("yt-dlp")
+        //     .args([
+        //         &*url,
+        //         "--paths", &directory.to_str().unwrap(),
+        //         "--quiet",
+        //         "--flat-playlist",
+        //         "--color", "no_color",
+        //         "--print", "playlist:[playlist-started:metadata]%(id)s;%(title)s",
+        //         "--print", "video:[playlist-started:url]%(url)s"
+        //     ])
+        //     .stdout(::std::process::Stdio::piped())
+        //     .stderr(::std::process::Stdio::piped())
+        //     .spawn()?;
 
-        let stdout_reader = ::std::io::BufReader::new(stdout);
-        let stderr_reader = ::std::io::BufReader::new(stderr);
+        // let stdout = process.stdout.take().unwrap();
+        // let stderr = process.stderr.take().unwrap();
 
-        static PLAYLIST_METADATA_REGEX: ::once_cell::sync::Lazy<::regex::Regex> = regex!(
-            r"\[playlist-started:metadata\];(?P<id>[^;]+);(?P<title>[^;]+)"
-        );
+        // let stdout_reader = ::std::io::BufReader::new(stdout);
+        // let stderr_reader = ::std::io::BufReader::new(stderr);
 
-        static PLAYLIST_VIDEO_URL_REGEX: ::once_cell::sync::Lazy<::regex::Regex> = regex!(
-            r"\[playlist-started:url\];(?P<url>[^;]+)"
-        );        
+        // let (playlist_started_event, playlist_video_urls) =
+        //     <(PlaylistDownloadStartedEvent, Vec<MaybeOwnedString>)>::from_lines(
+        //         stdout_reader.lines().filter_map(|line| line.ok())
+        //     ).unwrap();
 
-        let playlist_events = ::async_stream::stream! {
+        // let playlist_video_urls: ::std::collections::VecDeque<_> = playlist_video_urls.into();
+
+        // #[derive(Clone, Copy, PartialEq)]
+        // enum VideoState {
+        //     Idle,
+        //     Busy,
+        // }
+        
+        // let mut video_states = vec![VideoState::Idle; self.configurations.concurrent_video_downloads];
+
+        // while let Some(video_url) = playlist_video_urls.front() {
+        //     let idle_index = None;
+
+        //     for (index, state) in video_states.iter().enumerate() {
+        //         if *state == VideoState::Idle {
+        //             idle_index = Some(index);
+        //             break;
+        //         }
+        //     }
+
+        //     if idle_index.is_none() {
+        //         continue;
+        //     }
+
+        //     playlist_video_urls.pop_front();
+
             
-        };
+        // }
 
-        let video_events = ::async_stream::stream! {
-            use crate::private::FromYtDlpVideoDownloadOutput as _;
+        // // maintain a fixed size container sized `self.configurations.concurrent_video_downloads`, all indices are idle when initialized
+        // // whenever an index is idle, calls `self.download_video({the next url in playlist_video_urls}, directory}).await?`
+        // // then the called index is called occupied
+        // // the function (at the index) will return a Fallible<(BoxedStream<VideoDownloadEvent>, BoxedStream<DownloadDiagnosticEvent>)>
+        // // the first part, BoxedStream<VideoDownloadEvent>, will be appended to `video_streams[{index}]`
+        // // the second part, BoxedStream<DownloadDiagnosticEvent>, will be appended to `diagnostic_events`
+        // // by "appended", i mean if an event is yielded from the appended, it is immediately yielded to the appendee
+        
+        // // when a video is completed, i.e. when a `BoxedStream<VideoDownloadEvent>` yield a `VideoDownloadEvent::Completed(VideoDownloadCompletedEvent { video })`,
+        // // we will create a `let event = PlaylistDownloadProgressUpdatedEvent { video, completed: usize, total: usize }` and yield a `PlaylistDownloadEvent::ProgressUpdated(event)` to `playlist_events`
+        // // also the occupied index is idle again
 
-            for event in stdout_reader.lines()
-                .filter_map(|line| line.ok())
-                .filter_map(|line| VideoDownloadEvent::from_str(&line))
-            {
-                yield event;
-            }
-        };
+        // // when the playlist_video_urls has completed all urls
+        // // we create a Playlist from the videos and yield a `PlaylistDownloadEvent::Completed(...)` to `playlist_events`
 
-        let diagnostic_events = ::async_stream::stream! {
-            use crate::private::FromYtDlpVideoDownloadOutput as _;
+        // let playlist_event_stream = ::async_stream::stream! {
+        //     yield PlaylistDownloadEvent::Started(playlist_started_event);
+        // };
 
-            for event in stderr_reader.lines()
-                .filter_map(|line| line.ok())
-                .filter_map(|line| DownloadDiagnosticEvent::from_str(&line))
-            {
-                yield event;
-            }
-        };
+        // let video_event_streams = ::async_stream::stream! {
+        //     todo!()
+        // };
 
-        Ok((
-            ::std::boxed::Box::pin(playlist_events),
-            ::std::boxed::Box::pin(video_events),
-            ::std::boxed::Box::pin(diagnostic_events),
-        ))
+        // let diagnostic_event_stream = ::async_stream::stream! {
+        //     use crate::private::FromYtDlpVideoDownloadOutput as _;
+
+        //     for event in stderr_reader.lines()
+        //         .filter_map(|line| line.ok())
+        //         .filter_map(|line| DownloadDiagnosticEvent::from_line(&line))
+        //     {
+        //         yield event;
+        //     }
+        // };
+
+        // Ok((
+        //     ::std::boxed::Box::pin(playlist_event_stream),
+        //     ::std::boxed::Box::pin(video_event_streams),
+        //     ::std::boxed::Box::pin(diagnostic_event_stream),
+        // ))
+
+        Err(::anyhow::anyhow!(""))
     }
 }
 
@@ -276,6 +335,7 @@ impl MetadataWriter for Id3MetadataWriter {
 }
 
 mod private {
+    use domain::{PlaylistMetadata, UnresolvedPlaylist};
     use use_cases::models::PlaylistDownloadStartedEvent;
 
     use super::*;
@@ -322,24 +382,24 @@ mod private {
     }
 
     pub trait FromYtDlpVideoDownloadOutput: Sized {
-        fn from_str(string: &str) -> Option<Self>;
+        fn from_line(line: &str) -> Option<Self>;
     }
 
     impl FromYtDlpVideoDownloadOutput for VideoDownloadEvent {
-        fn from_str(string: &str) -> Option<Self> {
-            VideoDownloadProgressUpdatedEvent::from_str(string).map(Self::ProgressUpdated)
-                .or(VideoDownloadStartedEvent::from_str(string).map(Self::Started))
-                .or(VideoDownloadCompletedEvent::from_str(string).map(Self::Completed))
+        fn from_line(line: &str) -> Option<Self> {
+            VideoDownloadProgressUpdatedEvent::from_line(line).map(Self::ProgressUpdated)
+                .or(VideoDownloadStartedEvent::from_line(line).map(Self::Started))
+                .or(VideoDownloadCompletedEvent::from_line(line).map(Self::Completed))
         }
     }
 
     impl FromYtDlpVideoDownloadOutput for VideoDownloadStartedEvent {
-        fn from_str(string: &str) -> Option<Self> {
+        fn from_line(line: &str) -> Option<Self> {
             static REGEX: ::once_cell::sync::Lazy<::regex::Regex> = regex!(
                 r"\[video-started\](?P<id>[^;]+);(?P<title>[^;]+);(?P<album>[^;]+);(?P<artist>[^;]+);(?P<genre>[^\r\n]+)"
             );
 
-            let captures = REGEX.captures(string)?;
+            let captures = REGEX.captures(line)?;
 
             let id = parse_attr(&captures["id"])?;
             let title = parse_attr(&captures["title"])?;
@@ -357,12 +417,12 @@ mod private {
     }
 
     impl FromYtDlpVideoDownloadOutput for VideoDownloadProgressUpdatedEvent {
-        fn from_str(string: &str) -> Option<Self> {
+        fn from_line(line: &str) -> Option<Self> {
             static REGEX: ::once_cell::sync::Lazy<::regex::Regex> = regex!(
                 r"\[video-downloading\]\s*(?P<percent>\d+)(?:\.\d+)?%;(?P<eta>[^;]+);\s*(?P<size>[^;]+);\s*(?P<speed>[^\r\n]+)"
             );
 
-            let captures = REGEX.captures(string)?;
+            let captures = REGEX.captures(line)?;
 
             let percentage = parse_attr(&captures["percent"])?;
             let eta = parse_attr(&captures["eta"]).unwrap_or("00:00".into());
@@ -379,12 +439,12 @@ mod private {
     }
 
     impl FromYtDlpVideoDownloadOutput for VideoDownloadCompletedEvent {
-        fn from_str(string: &str) -> Option<Self> {
+        fn from_line(line: &str) -> Option<Self> {
             static REGEX: ::once_cell::sync::Lazy<::regex::Regex> = regex!(
                 r"\[video-completed\](?P<filepath>[^;]+);(?P<id>[^;]+);(?P<title>[^;]+);(?P<album>[^;]+);(?P<artist>[^;]+);(?P<genre>[^\r\n]+)"
             );
 
-            let captures = REGEX.captures(string)?;
+            let captures = REGEX.captures(line)?;
 
             let id = parse_attr(&captures["id"])?;
             let title = parse_attr(&captures["title"])?;
@@ -404,12 +464,12 @@ mod private {
     }
 
     impl FromYtDlpVideoDownloadOutput for DownloadDiagnosticEvent {
-        fn from_str(string: &str) -> Option<Self> {
+        fn from_line(line: &str) -> Option<Self> {
             static REGEX: ::once_cell::sync::Lazy<::regex::Regex> = regex!(
                 r"^(?P<level>WARNING|ERROR):\s*(?P<message>.+)$"
             );
 
-            let captures = REGEX.captures(string)?;
+            let captures = REGEX.captures(line)?;
             
             let message = parse_attr(&captures["message"])?;
             let level = match &captures["level"] {
@@ -447,7 +507,53 @@ mod private {
         string.trim()
     }
 
-    pub trait FromYtDlpPlaylistDownloadOutput: Sized {
-        fn from_str(string: &str) -> Option<Self>;
+    pub trait FromYtDlpPlaylistDownloadOutput {
+        fn from_lines<I, S>(lines: I) -> Option<Self>
+        where
+            I: IntoIterator<Item = S>,
+            S: AsRef<str>,
+            Self: Sized;
+    }
+
+    impl FromYtDlpPlaylistDownloadOutput for (PlaylistDownloadStartedEvent, Vec<MaybeOwnedString>) {
+        fn from_lines<I, S>(lines: I) -> Option<Self>
+        where
+            I: IntoIterator<Item = S>,
+            S: AsRef<str>,
+            Self: Sized,
+        {
+            static URL_REGEX: ::once_cell::sync::Lazy<::regex::Regex> = regex!(
+                r"\[playlist-started:url\];(?P<url>[^;]+)"
+            );
+
+            static METADATA_REGEX: ::once_cell::sync::Lazy<::regex::Regex> = regex!(
+                r"\[playlist-started:metadata\];(?P<id>[^;]+);(?P<title>[^;]+)"
+            );
+
+            let mut urls = Vec::new();
+
+            for line in lines {
+                if let Some(captures) = URL_REGEX.captures(line.as_ref()) {
+                    let url = parse_attr(&captures["url"])?;
+                    urls.push(url);
+
+                } else if let Some(captures) = METADATA_REGEX.captures(line.as_ref()) {
+                    let id = parse_attr(&captures["id"])?;
+                    let title = parse_attr(&captures["title"])?;
+
+                    let playlist = UnresolvedPlaylist {
+                        id,
+                        metadata: PlaylistMetadata {
+                            title,
+                            size: urls.len(),
+                        },
+                    };
+
+                    return Some((PlaylistDownloadStartedEvent { playlist }, urls))
+                }
+            }
+
+            None
+        }
     }
 }
