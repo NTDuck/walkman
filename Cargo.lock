@@ -457,6 +457,7 @@ dependencies = [
  "indicatif",
  "lofty",
  "once_cell",
+ "rayon",
  "regex",
  "tokio",
  "use-cases",

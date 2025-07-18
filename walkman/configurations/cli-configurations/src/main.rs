@@ -1,12 +1,12 @@
 pub(crate) mod utils;
 
 use ::infrastructures::DownloadVideoView;
-use ::infrastructures::Id3MetadataWriter;
+use ::infrastructures::Id3PlaylistAsAlbumMetadataWriter;
 use ::infrastructures::YtDlpDownloader;
-use infrastructures::YtDlpDownloaderConfigurations;
+use ::infrastructures::YtDlpDownloaderConfigurations;
 use ::use_cases::boundaries::DownloadPlaylistRequestModel;
 use ::use_cases::boundaries::DownloadVideoRequestModel;
-use use_cases::interactors::DownloadPlaylistInteractor;
+use ::use_cases::interactors::DownloadPlaylistInteractor;
 use ::use_cases::interactors::DownloadVideoInteractor;
 
 use crate::utils::aliases::Fallible;
@@ -15,9 +15,9 @@ use crate::utils::aliases::Fallible;
 async fn main() -> Fallible<()> {
     let download_video_view = std::sync::Arc::new(DownloadVideoView::new()?);
     let downloader = std::sync::Arc::new(YtDlpDownloader::new(YtDlpDownloaderConfigurations {
-        concurrent_video_downloads: 4,
+        workers: 4,
     }));
-    let metadata_writer = std::sync::Arc::new(Id3MetadataWriter::new());
+    let metadata_writer = std::sync::Arc::new(Id3PlaylistAsAlbumMetadataWriter::new());
 
     let download_video_interactor =
         DownloadVideoInteractor::new(download_video_view.clone(), downloader.clone(), metadata_writer.clone());
