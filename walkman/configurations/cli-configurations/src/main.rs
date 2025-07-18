@@ -6,6 +6,7 @@ use ::infrastructures::YtDlpDownloader;
 use infrastructures::YtDlpDownloaderConfigurations;
 use ::use_cases::boundaries::DownloadPlaylistRequestModel;
 use ::use_cases::boundaries::DownloadVideoRequestModel;
+use use_cases::interactors::DownloadPlaylistInteractor;
 use ::use_cases::interactors::DownloadVideoInteractor;
 
 use crate::utils::aliases::Fallible;
@@ -20,6 +21,8 @@ async fn main() -> Fallible<()> {
 
     let download_video_interactor =
         DownloadVideoInteractor::new(download_video_view.clone(), downloader.clone(), metadata_writer.clone());
+    // let download_playlist_interactor =
+    //     DownloadPlaylistInteractor::new(output_boundary, downloader.clone(), metadata_writer.clone());
 
     let command = ::clap::Command::new("walkman")
         .subcommand_required(true)

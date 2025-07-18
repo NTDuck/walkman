@@ -742,6 +742,7 @@ dependencies = [
  "futures",
  "futures-core",
  "futures-util",
+ "indicatif",
  "regex",
  "tokio",
 ]

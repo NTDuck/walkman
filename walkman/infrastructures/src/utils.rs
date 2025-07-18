@@ -10,6 +10,13 @@ pub mod aliases {
 
 pub mod macros {
     #[macro_export]
+    macro_rules! progress_style {
+        ($template:expr) => {
+            ::once_cell::sync::Lazy::new(|| ::indicatif::ProgressStyle::with_template($template).unwrap())
+        };
+    }
+
+    #[macro_export]
     macro_rules! regex {
         ($pattern:expr) => {
             ::once_cell::sync::Lazy::new(|| ::regex::Regex::new($pattern).unwrap())

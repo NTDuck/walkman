@@ -2,7 +2,7 @@ pub(crate) mod utils;
 
 use ::async_trait::async_trait;
 use ::derive_new::new;
-use domain::Playlist;
+use ::domain::Playlist;
 use ::domain::UnresolvedVideo;
 use ::domain::Video;
 use ::domain::VideoMetadata;
@@ -11,7 +11,7 @@ use ::use_cases::gateways::Downloader;
 use ::use_cases::gateways::MetadataWriter;
 use ::use_cases::models::DiagnosticLevel;
 use ::use_cases::models::DownloadDiagnosticEvent;
-use use_cases::models::PlaylistDownloadCompletedEvent;
+use ::use_cases::models::PlaylistDownloadCompletedEvent;
 use ::use_cases::models::PlaylistDownloadEvent;
 use ::use_cases::models::PlaylistDownloadProgressUpdatedEvent;
 use ::use_cases::models::PlaylistDownloadStartedEvent;
@@ -26,19 +26,23 @@ use crate::utils::aliases::MaybeOwnedPath;
 use crate::utils::aliases::MaybeOwnedString;
 
 pub struct DownloadVideoView {
-    progress_bar: ::indicatif::ProgressBar,
+    progress_bars: ::indicatif::MultiProgress,
+    video_progress_bar: ::indicatif::ProgressBar,
 }
 
 // TODO migrate to with_key
 impl DownloadVideoView {
     pub fn new() -> Fallible<Self> {
-        let progress_bar_style = ::indicatif::ProgressStyle::with_template("{prefix} {bar:50} {msg}")?;
-        let progress_bar = ::indicatif::ProgressBar::new(100).with_style(progress_bar_style);
+        static VIDEO_PROGRESS_BAR_STYLE: ::once_cell::sync::Lazy<::indicatif::ProgressStyle> = progress_style!("{prefix} {bar:50} {msg}");
+        
+        let progress_bars = ::indicatif::MultiProgress::new();
+        let video_progress_bar = progress_bars.add(::indicatif::ProgressBar::new(100)
+            .with_style(VIDEO_PROGRESS_BAR_STYLE.clone()));
 
-        progress_bar.set_prefix(format!("{:>10} {:>10} {:>4}", "??MiB", "??MiB/s", "??:??"));
-        progress_bar.set_message("??%");
+        video_progress_bar.set_prefix(format!("{:>10} @ {:>10} {:>4}", "??MiB", "??MiB/s", "??:??"));
+        video_progress_bar.set_message("??%");
 
-        Ok(Self { progress_bar })
+        Ok(Self { progress_bars, video_progress_bar })
     }
 }
 
@@ -58,35 +62,61 @@ impl Update<DownloadDiagnosticEvent> for DownloadVideoView {
     async fn update(&self, event: &DownloadDiagnosticEvent) -> Fallible<()> {
         use ::colored::Colorize as _;
 
-        match event.level {
-            DiagnosticLevel::Warning => {
-                self.progress_bar.println(format!("{}", event.message.yellow().bold()));
-            },
+        let message = match event.level {
+            DiagnosticLevel::Warning => event.message.yellow(),
+            DiagnosticLevel::Error => event.message.red(),
+        };
 
-            DiagnosticLevel::Error => {
-                let progress_bar_style = ::indicatif::ProgressStyle::with_template("{prefix} {bar:50.red} {msg}")?;
-                self.progress_bar.set_style(progress_bar_style);
+        static DECOY_PROGRESS_BAR_STYLE: ::once_cell::sync::Lazy<::indicatif::ProgressStyle> = progress_style!("{msg}");
 
-                self.progress_bar.abandon();
-                eprintln!("{}", event.message.red().bold());
-            },
-        }
-        
+        let decoy_progress_bar = self.progress_bars.add(::indicatif::ProgressBar::no_length()
+            .with_style(DECOY_PROGRESS_BAR_STYLE.clone()));
+
+        decoy_progress_bar.finish_with_message(message.to_string());
+
         Ok(())
     }
 }
 
-// pub struct DownloadPlaylistView;
+pub struct DownloadPlaylistView {
+    progress_bars: ::indicatif::MultiProgress,
+}
 
-// #[async_trait]
-// impl DownloadVideoOutputBoundary for DownloadPlaylistView {
-//     async fn update(&self, _event: &VideoDownloadEvent) -> Fallible<()> { todo!() }
-// }
+impl DownloadPlaylistView {
+    pub fn new() -> Fallible<Self> {
+        let playlist_progress_bar_style = ::indicatif::ProgressStyle::with_template("{prefix} {bar:50} {msg}")?;
+        let playlist_progress_bar = ::indicatif::ProgressBar::new(100).with_style(playlist_progress_bar_style);
 
-// #[async_trait]
-// impl DownloadPlaylistOutputBoundary for DownloadPlaylistView {
-//     async fn update(&self, _event: &PlaylistDownloadEvent) -> Fallible<()> { todo!() }
-// }
+        playlist_progress_bar.set_prefix(format!("{:>10} {:>10} {:>4}", "??MiB", "??MiB/s", "??:??"));
+        playlist_progress_bar.set_message("??/??");
+
+        let progress_bars = ::indicatif::MultiProgress::new();
+        progress_bars.add(playlist_progress_bar);
+
+        Ok(Self { progress_bars })
+    }
+}
+
+#[async_trait]
+impl Update<PlaylistDownloadEvent> for DownloadPlaylistView {
+    async fn update(&self, event: &PlaylistDownloadEvent) -> Fallible<()> {
+        Ok(())
+    }
+}
+
+#[async_trait]
+impl Update<VideoDownloadEvent> for DownloadPlaylistView {
+    async fn update(&self, event: &VideoDownloadEvent) -> Fallible<()> {
+        Ok(())
+    }
+}
+
+#[async_trait]
+impl Update<DownloadDiagnosticEvent> for DownloadPlaylistView {
+    async fn update(&self, event: &DownloadDiagnosticEvent) -> Fallible<()> {
+        Ok(())
+    }
+}
 
 #[derive(new)]
 #[derive(Clone)]
@@ -321,7 +351,7 @@ impl Downloader for YtDlpDownloader {
             metadata: playlist.metadata,
             videos: ::std::mem::take(&mut *playlist_videos.lock().await),
         };
-        
+
         let event = PlaylistDownloadCompletedEvent { playlist };
         playlist_event_stream_tx.send(PlaylistDownloadEvent::Completed(event))?;
 
@@ -424,8 +454,8 @@ mod private {
         async fn update(&self, event: &VideoDownloadStartedEvent) -> Fallible<()> {
             use ::colored::Colorize as _;
 
-            self.progress_bar
-                .println(format!("downloading `{}` ...", event.video.metadata.title.white().bold()));
+            self.video_progress_bar
+                .println(format!("Downloading video: {}", event.video.metadata.title.white().bold()));
 
             Ok(())
         }
@@ -434,10 +464,11 @@ mod private {
     #[async_trait]
     impl Update<VideoDownloadProgressUpdatedEvent> for DownloadVideoView {
         async fn update(&self, event: &VideoDownloadProgressUpdatedEvent) -> Fallible<()> {
-            self.progress_bar.set_position(event.percentage as u64);
-            self.progress_bar
-                .set_prefix(format!("{:>10} {:>10} {:>4}", event.size, event.speed, event.eta));
-            self.progress_bar.set_message(format!("{}%", event.percentage));
+            self.video_progress_bar.set_position(event.percentage as u64);
+            self.video_progress_bar
+                .set_prefix(format!("{:>10} @ {:>10} {:>4}", event.size, event.speed, event.eta));
+            self.video_progress_bar
+                .set_message(format!("{}%", event.percentage));
 
             Ok(())
         }
@@ -445,15 +476,54 @@ mod private {
 
     #[async_trait]
     impl Update<VideoDownloadCompletedEvent> for DownloadVideoView {
+        async fn update(&self, _: &VideoDownloadCompletedEvent) -> Fallible<()> {
+            static VIDEO_PROGRESS_BAR_FINISH_STYLE: ::once_cell::sync::Lazy<::indicatif::ProgressStyle> = progress_style!("{prefix} {bar:50.green} {msg}");
+            
+            self.video_progress_bar.set_style(VIDEO_PROGRESS_BAR_FINISH_STYLE.clone());
+            self.video_progress_bar.finish();
+
+            Ok(())
+        }
+    }
+
+    #[async_trait]
+    impl Update<PlaylistDownloadStartedEvent> for DownloadPlaylistView {
+        async fn update(&self, event: &PlaylistDownloadStartedEvent) -> Fallible<()> {
+            Ok(())
+        }
+    }
+
+    #[async_trait]
+    impl Update<PlaylistDownloadProgressUpdatedEvent> for DownloadPlaylistView {
+        async fn update(&self, event: &PlaylistDownloadProgressUpdatedEvent) -> Fallible<()> {
+            Ok(())
+        }
+    }
+
+    #[async_trait]
+    impl Update<PlaylistDownloadCompletedEvent> for DownloadPlaylistView {
+        async fn update(&self, event: &PlaylistDownloadCompletedEvent) -> Fallible<()> {
+            Ok(())
+        }
+    }
+
+    #[async_trait]
+    impl Update<VideoDownloadStartedEvent> for DownloadPlaylistView {
+        async fn update(&self, event: &VideoDownloadStartedEvent) -> Fallible<()> {
+            Ok(())
+        }
+    }
+
+    #[async_trait]
+    impl Update<VideoDownloadProgressUpdatedEvent> for DownloadPlaylistView {
+        async fn update(&self, event: &VideoDownloadProgressUpdatedEvent) -> Fallible<()> {
+            Ok(())
+        }
+    }
+
+    #[async_trait]
+    impl Update<VideoDownloadCompletedEvent> for DownloadPlaylistView {
         async fn update(&self, event: &VideoDownloadCompletedEvent) -> Fallible<()> {
-            use ::colored::Colorize as _;
-
-            let progress_bar_style = ::indicatif::ProgressStyle::with_template("{prefix} {bar:50.green} {msg}")?;
-            self.progress_bar.set_style(progress_bar_style);
-
-            self.progress_bar.finish();
-            println!(" downloaded `{}`.", event.video.metadata.title.green().bold());
-
             Ok(())
         }
     }
