@@ -1,7 +1,7 @@
 use ::async_trait::async_trait;
-use ::domain::Playlist;
-use ::domain::Video;
 
+use crate::models::descriptors::ResolvedPlaylist;
+use crate::models::descriptors::ResolvedVideo;
 use crate::models::events::DiagnosticEvent;
 use crate::models::events::PlaylistDownloadEvent;
 use crate::models::events::VideoDownloadEvent;
@@ -18,13 +18,12 @@ pub trait Downloader: Send + Sync {
 
 #[async_trait]
 pub trait MetadataWriter: Send + Sync {
-    async fn write_video(&self, video: &Video) -> Fallible<()>;
+    async fn write_video(&self, video: &ResolvedVideo) -> Fallible<()>;
 
-    async fn write_playlist(&self, playlist: &Playlist) -> Fallible<()> {
+    async fn write_playlist(&self, playlist: &ResolvedPlaylist) -> Fallible<()> {
         use ::futures_util::StreamExt as _;
 
-        let mut futures = playlist
-            .videos
+        let mut futures = playlist.videos
             .iter()
             .map(|video| self.write_video(video))
             .collect::<::futures_util::stream::FuturesUnordered<_>>();

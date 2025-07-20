@@ -15,7 +15,6 @@ derive-new = { workspace = true }
 futures-core = { workspace = true }
 futures-util = { workspace = true }
 tokio = { workspace = true, features = ["rt"] }
-rayon = "1.10.0"
 
 [lints]
 workspace = true
