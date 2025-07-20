@@ -19,8 +19,8 @@ use ::use_cases::models::PlaylistDownloadProgressUpdatedEvent;
 use ::use_cases::models::PlaylistDownloadStartedEvent;
 use ::use_cases::models::VideoDownloadCompletedEvent;
 use ::use_cases::models::VideoDownloadProgressUpdatedEvent;
-use ::use_cases::models::VideoDownloadEvent;
-use ::use_cases::models::VideoDownloadStartedEvent;
+use ::use_cases::models::VideoDownloadPayload;
+use ::use_cases::models::VideoDownloadStartedEventPayload;
 
 use crate::utils::aliases::BoxedStream;
 use crate::utils::aliases::Fallible;
@@ -49,12 +49,12 @@ impl DownloadVideoView {
 }
 
 #[async_trait]
-impl Update<VideoDownloadEvent> for DownloadVideoView {
-    async fn update(&self, event: &VideoDownloadEvent) -> Fallible<()> {
+impl Update<VideoDownloadPayload> for DownloadVideoView {
+    async fn update(&self, event: &VideoDownloadPayload) -> Fallible<()> {
         match event {
-            VideoDownloadEvent::Started(event) => self.update(event).await,
-            VideoDownloadEvent::ProgressUpdated(event) => self.update(event).await,
-            VideoDownloadEvent::Completed(event) => self.update(event).await,
+            VideoDownloadPayload::Started(event) => self.update(event).await,
+            VideoDownloadPayload::ProgressUpdated(event) => self.update(event).await,
+            VideoDownloadPayload::Completed(event) => self.update(event).await,
         }
     }
 }
@@ -115,12 +115,12 @@ impl Update<PlaylistDownloadEvent> for DownloadPlaylistView {
 }
 
 #[async_trait]
-impl Update<VideoDownloadEvent> for DownloadPlaylistView {
-    async fn update(&self, event: &VideoDownloadEvent) -> Fallible<()> {
+impl Update<VideoDownloadPayload> for DownloadPlaylistView {
+    async fn update(&self, event: &VideoDownloadPayload) -> Fallible<()> {
         match event {
-            VideoDownloadEvent::Started(event) => self.update(event).await,
-            VideoDownloadEvent::ProgressUpdated(event) => self.update(event).await,
-            VideoDownloadEvent::Completed(event) => self.update(event).await,
+            VideoDownloadPayload::Started(event) => self.update(event).await,
+            VideoDownloadPayload::ProgressUpdated(event) => self.update(event).await,
+            VideoDownloadPayload::Completed(event) => self.update(event).await,
         }
     }
 }
@@ -161,7 +161,7 @@ pub struct YtDlpDownloaderConfigurations {
 impl Downloader for YtDlpDownloader {
     async fn download_video(
         &self, url: MaybeOwnedString, directory: MaybeOwnedPath,
-    ) -> Fallible<(BoxedStream<VideoDownloadEvent>, BoxedStream<DownloadDiagnosticEvent>)> {
+    ) -> Fallible<(BoxedStream<VideoDownloadPayload>, BoxedStream<DownloadDiagnosticEvent>)> {
         use ::std::io::BufRead as _;
         use crate::private::FromYtDlpVideoDownloadOutput as _;
 
@@ -200,7 +200,7 @@ impl Downloader for YtDlpDownloader {
 
             reader.lines()
                 .filter_map(|line| line.ok())
-                .filter_map(|line| VideoDownloadEvent::from_line(&line))
+                .filter_map(|line| VideoDownloadPayload::from_line(&line))
                 .try_for_each(|event| video_event_stream_tx.send(event))
         });
 
@@ -233,7 +233,7 @@ impl Downloader for YtDlpDownloader {
 
     async fn download_playlist(
         &self, url: MaybeOwnedString, directory: MaybeOwnedPath,
-    ) -> Fallible<(BoxedStream<PlaylistDownloadEvent>, ::std::boxed::Box<[BoxedStream<VideoDownloadEvent>]>, BoxedStream<DownloadDiagnosticEvent>)> {
+    ) -> Fallible<(BoxedStream<PlaylistDownloadEvent>, ::std::boxed::Box<[BoxedStream<VideoDownloadPayload>]>, BoxedStream<DownloadDiagnosticEvent>)> {
         use ::std::io::BufRead as _;
         use crate::private::FromYtDlpVideoDownloadOutput as _;
         use crate::private::FromYtDlpPlaylistDownloadOutput as _;
@@ -333,7 +333,7 @@ impl Downloader for YtDlpDownloader {
 
                                 while let Some(event) = video_event_stream.next().await {
                                     match event {
-                                        VideoDownloadEvent::Completed(VideoDownloadCompletedEvent { ref video }) => {
+                                        VideoDownloadPayload::Completed(VideoDownloadCompletedEvent { ref video }) => {
                                             completed.fetch_add(1, ::std::sync::atomic::Ordering::Relaxed);
                                             playlist_videos.lock().await.push(video.clone());
 
@@ -396,7 +396,7 @@ impl Downloader for YtDlpDownloader {
                     yield event;
                 }
             })
-            .map(|stream| ::std::boxed::Box::pin(stream) as BoxedStream<VideoDownloadEvent>)
+            .map(|stream| ::std::boxed::Box::pin(stream) as BoxedStream<VideoDownloadPayload>)
             .collect::<Vec<_>>()
             .into_boxed_slice();
 
@@ -514,8 +514,8 @@ mod private {
     use crate::DownloadVideoView;
 
     #[async_trait]
-    impl Update<VideoDownloadStartedEvent> for DownloadVideoView {
-        async fn update(&self, event: &VideoDownloadStartedEvent) -> Fallible<()> {
+    impl Update<VideoDownloadStartedEventPayload> for DownloadVideoView {
+        async fn update(&self, event: &VideoDownloadStartedEventPayload) -> Fallible<()> {
             use ::colored::Colorize as _;
 
             self.video_progress_bar
@@ -580,8 +580,8 @@ mod private {
     }
 
     #[async_trait]
-    impl Update<VideoDownloadStartedEvent> for DownloadPlaylistView {
-        async fn update(&self, event: &VideoDownloadStartedEvent) -> Fallible<()> {
+    impl Update<VideoDownloadStartedEventPayload> for DownloadPlaylistView {
+        async fn update(&self, event: &VideoDownloadStartedEventPayload) -> Fallible<()> {
             Ok(())
         }
     }
@@ -604,15 +604,15 @@ mod private {
         fn from_line(line: &str) -> Option<Self>;
     }
 
-    impl FromYtDlpVideoDownloadOutput for VideoDownloadEvent {
+    impl FromYtDlpVideoDownloadOutput for VideoDownloadPayload {
         fn from_line(line: &str) -> Option<Self> {
             VideoDownloadProgressUpdatedEvent::from_line(line).map(Self::ProgressUpdated)
-                .or(VideoDownloadStartedEvent::from_line(line).map(Self::Started))
+                .or(VideoDownloadStartedEventPayload::from_line(line).map(Self::Started))
                 .or(VideoDownloadCompletedEvent::from_line(line).map(Self::Completed))
         }
     }
 
-    impl FromYtDlpVideoDownloadOutput for VideoDownloadStartedEvent {
+    impl FromYtDlpVideoDownloadOutput for VideoDownloadStartedEventPayload {
         fn from_line(line: &str) -> Option<Self> {
             static REGEX: ::once_cell::sync::Lazy<::regex::Regex> = regex!(
                 r"\[video-started\](?P<id>[^;]+);(?P<title>[^;]+);(?P<album>[^;]+);(?P<artist>[^;]+);(?P<genre>[^\r\n]+)"

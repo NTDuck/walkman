@@ -1,8 +1,8 @@
 use ::async_trait::async_trait;
 
-use crate::models::DownloadDiagnosticEvent;
-use crate::models::PlaylistDownloadEvent;
-use crate::models::VideoDownloadEvent;
+use crate::models::events::DiagnosticEvent;
+use crate::models::events::PlaylistDownloadEvent;
+use crate::models::events::VideoDownloadEvent;
 use crate::utils::aliases::Fallible;
 use crate::utils::aliases::MaybeOwnedPath;
 use crate::utils::aliases::MaybeOwnedString;
@@ -20,11 +20,11 @@ pub struct DownloadVideoRequestModel {
     pub directory: MaybeOwnedPath,
 }
 
-pub trait DownloadVideoOutputBoundary: Update<VideoDownloadEvent> + Update<DownloadDiagnosticEvent> {}
+pub trait DownloadVideoOutputBoundary: Update<VideoDownloadEvent> + Update<DiagnosticEvent> {}
 
 impl<OutputBoundary> DownloadVideoOutputBoundary for OutputBoundary
 where
-    OutputBoundary: Update<VideoDownloadEvent> + Update<DownloadDiagnosticEvent>,
+    OutputBoundary: Update<VideoDownloadEvent> + Update<DiagnosticEvent>,
 {
 }
 
@@ -41,11 +41,11 @@ pub struct DownloadPlaylistRequestModel {
     pub directory: MaybeOwnedPath,
 }
 
-pub trait DownloadPlaylistOutputBoundary: Update<PlaylistDownloadEvent> + Update<VideoDownloadEvent> + Update<DownloadDiagnosticEvent> {}
+pub trait DownloadPlaylistOutputBoundary: Update<PlaylistDownloadEvent> + Update<VideoDownloadEvent> + Update<DiagnosticEvent> {}
 
 impl<OutputBoundary> DownloadPlaylistOutputBoundary for OutputBoundary
 where
-    OutputBoundary: Update<PlaylistDownloadEvent> + Update<VideoDownloadEvent> + Update<DownloadDiagnosticEvent>,
+    OutputBoundary: Update<PlaylistDownloadEvent> + Update<VideoDownloadEvent> + Update<DiagnosticEvent>,
 {
 }
 

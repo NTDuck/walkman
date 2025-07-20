@@ -1,59 +1,127 @@
-use ::domain::UnresolvedVideo;
-use ::domain::Video;
-use ::domain::Playlist;
-use ::domain::UnresolvedPlaylist;
+pub mod events {
+    use crate::{models::descriptors::{PartiallyResolvedPlaylist, PartiallyResolvedVideo, ResolvedPlaylist, ResolvedVideo}, utils::aliases::MaybeOwnedString};
 
-use crate::utils::aliases::MaybeOwnedString;
+    pub struct Event<Payload> {
+        pub metadata: EventMetadata,
+        pub payload: Payload,
+    }
 
-pub enum VideoDownloadEvent {
-    Started(VideoDownloadStartedEvent),
-    ProgressUpdated(VideoDownloadProgressUpdatedEvent),
-    Completed(VideoDownloadCompletedEvent),
+    pub struct EventMetadata {
+        pub worker_id: MaybeOwnedString,
+        pub correlation_id: MaybeOwnedString,
+        pub timestamp: ::std::time::SystemTime,
+    }
+
+    pub type VideoDownloadEvent = Event<VideoDownloadEventPayload>;
+
+    pub enum VideoDownloadEventPayload {
+        Started(VideoDownloadStartedEventPayload),
+        ProgressUpdated(VideoDownloadProgressUpdatedEventPayload),
+        Completed(VideoDownloadCompletedEventPayload),
+    }
+
+    pub struct VideoDownloadStartedEventPayload {
+        pub video: PartiallyResolvedVideo,
+    }
+
+    pub struct VideoDownloadProgressUpdatedEventPayload {
+        pub percentage: u8,
+
+        pub eta: MaybeOwnedString,
+        pub size: MaybeOwnedString,
+        pub speed: MaybeOwnedString,
+    }
+
+    pub struct VideoDownloadCompletedEventPayload {
+        pub video: ResolvedVideo,
+    }
+
+    pub type PlaylistDownloadEvent = Event<PlaylistDownloadEventPayload>;
+
+    pub enum PlaylistDownloadEventPayload {
+        Started(PlaylistDownloadStartedEventPayload),
+        ProgressUpdated(PlaylistDownloadProgressUpdatedEventPayload),
+        Completed(PlaylistDownloadCompletedEventPayload),
+    }
+
+    pub struct PlaylistDownloadStartedEventPayload {
+        pub playlist: PartiallyResolvedPlaylist,
+    }
+
+    pub struct PlaylistDownloadProgressUpdatedEventPayload {
+        pub video: ResolvedVideo,
+
+        pub completed: usize,
+        pub total: usize,
+    }
+
+    pub struct PlaylistDownloadCompletedEventPayload {
+        pub playlist: ResolvedPlaylist,
+    }
+
+    pub type DiagnosticEvent = Event<DiagnosticEventPayload>;
+
+    pub struct DiagnosticEventPayload {
+        pub level: DiagnosticLevel,
+        pub message: MaybeOwnedString,
+    }
+
+    pub enum DiagnosticLevel {
+        Warning,
+        Error,
+    }
 }
 
-pub struct VideoDownloadStartedEvent {
-    pub video: UnresolvedVideo,
-}
+pub mod descriptors {
+    use ::domain::{ChannelId, ChannelMetadata, PlaylistId, PlaylistMetadata, VideoId, VideoMetadata};
 
-pub struct VideoDownloadProgressUpdatedEvent {
-    pub percentage: u8,
+    use crate::utils::aliases::MaybeOwnedString;
 
-    pub eta: MaybeOwnedString,
-    pub size: MaybeOwnedString,
-    pub speed: MaybeOwnedString,
-}
+    #[derive(Debug, Clone)]
+    pub struct UnresolvedVideo {
+        pub url: MaybeOwnedString,
+    }
 
-pub struct VideoDownloadCompletedEvent {
-    pub video: Video,
-}
+    #[derive(Debug, Clone)]
+    pub struct PartiallyResolvedVideo {
+        pub url: MaybeOwnedString,
 
-pub enum PlaylistDownloadEvent {
-    Started(PlaylistDownloadStartedEvent),
-    ProgressUpdated(PlaylistDownloadProgressUpdatedEvent),
-    Completed(PlaylistDownloadCompletedEvent),
-}
+        pub id: VideoId,
+        pub metadata: VideoMetadata,
+    }
 
-pub struct PlaylistDownloadStartedEvent {
-    pub playlist: UnresolvedPlaylist,
-}
+    pub type ResolvedVideo = ::domain::Video;
 
-pub struct PlaylistDownloadProgressUpdatedEvent {
-    pub video: Video,
+    #[derive(Debug, Clone)]
+    pub struct UnresolvedPlaylist {
+        pub url: MaybeOwnedString,
+    }
 
-    pub completed: usize,
-    pub total: usize,
-}
+    #[derive(Debug, Clone)]
+    pub struct PartiallyResolvedPlaylist {
+        pub url: MaybeOwnedString,
 
-pub struct PlaylistDownloadCompletedEvent {
-    pub playlist: Playlist,
-}
+        pub id: PlaylistId,
+        pub metadata: PlaylistMetadata,
+        pub videos: Vec<UnresolvedVideo>,
+    }
 
-pub struct DownloadDiagnosticEvent {
-    pub level: DiagnosticLevel,
-    pub message: MaybeOwnedString,
-}
+    pub type ResolvedPlaylist = ::domain::Playlist;
 
-pub enum DiagnosticLevel {
-    Warning,
-    Error,
+    #[derive(Debug, Clone)]
+    pub struct UnresolvedChannel {
+        pub url: MaybeOwnedString,
+    }
+
+    #[derive(Debug, Clone)]
+    pub struct PartiallyResolvedChannel {
+        pub url: MaybeOwnedString,
+
+        pub id: ChannelId,
+        pub metadata: ChannelMetadata,
+        pub videos: Vec<UnresolvedVideo>,
+        pub playlists: Vec<UnresolvedPlaylist>,
+    }
+
+    pub type ResolvedChannel = ::domain::Channel;
 }

@@ -745,6 +745,22 @@ dependencies = [
  "futures-util",
  "indicatif",
  "regex",
+ "sandbox-infrastructures",
+ "tokio",
+]
+
+[[package]]
+name = "sandbox-infrastructures"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "async-stream",
+ "duct",
+ "futures",
+ "futures-core",
+ "futures-util",
+ "indicatif",
+ "regex",
  "tokio",
 ]
 
