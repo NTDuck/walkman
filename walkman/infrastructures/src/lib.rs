@@ -4,6 +4,7 @@ use ::async_trait::async_trait;
 use ::derive_new::new;
 use domain::PlaylistMetadata;
 use domain::VideoMetadata;
+use futures::FutureExt;
 use ::use_cases::boundaries::Update;
 use ::use_cases::gateways::Downloader;
 use ::use_cases::gateways::MetadataWriter;
@@ -16,6 +17,7 @@ use use_cases::models::events::DiagnosticEvent;
 use use_cases::models::events::DiagnosticEventPayload;
 use use_cases::models::events::DiagnosticLevel;
 use use_cases::models::events::Event;
+use use_cases::models::events::EventMetadata;
 use use_cases::models::events::PlaylistDownloadCompletedEventPayload;
 use use_cases::models::events::PlaylistDownloadEvent;
 use use_cases::models::events::PlaylistDownloadEventPayload;
@@ -238,69 +240,114 @@ impl Update<DiagnosticEvent> for DownloadPlaylistView {
 
 #[derive(new)]
 #[derive(Clone)]
-pub struct YtDlpDownloader {
-    configurations: YtDlpDownloaderConfigurations,
+pub struct YtdlpDownloader {
+    command_executor: ::std::sync::Arc<dyn CommandExecutor>,
+    id_generator: ::std::sync::Arc<dyn IdGenerator>,
+    parser: ::std::sync::Arc<YtdlpParser>,
+
+    configurations: YtdlpConfigurations,
 }
 
-#[derive(Clone)]
-pub struct YtDlpDownloaderConfigurations {
+trait CommandExecutor: Send + Sync {
+    fn execute<Program, Args>(&self, program: Program, args: Args) -> Fallible<(BoxedStream<MaybeOwnedString>, BoxedStream<MaybeOwnedString>)>
+    where
+        Program: AsRef<::std::ffi::OsStr>,
+        Args: IntoIterator,
+        Args::Item: AsRef<::std::ffi::OsStr>,
+        Self: Sized;
+}
+
+trait IdGenerator: Send + Sync {
+    fn generate(&self) -> MaybeOwnedString;
+}
+
+trait LineParser<T>: Send + Sync {
+    fn parse<Line>(&self, line: Line) -> Option<T>
+    where
+        T: Sized,
+        Line: AsRef<str>;    
+}
+
+trait LinesParser<T>: Send + Sync {
+    fn parse<Lines, Line>(&self, lines: Lines) -> Option<T>
+    where
+        T: Sized,
+        Lines: IntoIterator<Item = Line>,
+        Line: AsRef<str>;
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct YtdlpConfigurations {
     pub workers: usize,
 }
 
 #[async_trait]
-impl Downloader for YtDlpDownloader {
+impl Downloader for YtdlpDownloader {
     async fn download_video(
         &self, url: MaybeOwnedString, directory: MaybeOwnedPath,
     ) -> Fallible<(BoxedStream<VideoDownloadEvent>, BoxedStream<DiagnosticEvent>)> {
         use ::std::io::BufRead as _;
-        use crate::private::FromYtDlpVideoDownloadOutput as _;
 
         let (video_download_events_tx, mut video_download_events_rx) = ::tokio::sync::mpsc::unbounded_channel();
         let (diagnostic_events_tx, mut diagnostic_events_rx) = ::tokio::sync::mpsc::unbounded_channel();
 
         #[rustfmt::skip]
-        let mut process = ::std::process::Command::new("yt-dlp")
-            .args([
-                &*url,
-                "--paths", &directory.to_string_lossy(),
-                "--format", "bestaudio",
-                "--extract-audio",
-                "--audio-format", "mp3",
-                "--output", "%(title)s.%(ext)s",
-                "--quiet",
-                "--newline",
-                "--abort-on-error",
-                "--no-playlist",
-                "--color", "no_color",
-                "--force-overwrites",
-                "--progress",
-                "--print", "before_dl:[video-started]%(id)s;%(title)s;%(album)s;%(artist)s;%(genre)s",
-                "--progress-template", "[video-downloading]%(progress._percent_str)s;%(progress._eta_str)s;%(progress._total_bytes_str)s;%(progress._speed_str)s",
-                "--print", "after_move:[video-completed]%(filepath)s;%(id)s;%(title)s;%(album)s;%(artist)s;%(genre)s",
-            ])
-            .stdout(::std::process::Stdio::piped())
-            .stderr(::std::process::Stdio::piped())
-            .spawn()?;
+        let (stdout, stderr) = self.command_executor.execute("yt-dlp", [
+            &*url,
+            "--paths", &directory.to_string_lossy(),
+            "--format", "bestaudio",
+            "--extract-audio",
+            "--audio-format", "mp3",
+            "--output", "%(title)s.%(ext)s",
+            "--quiet",
+            "--newline",
+            "--abort-on-error",
+            "--no-playlist",
+            "--color", "no_color",
+            "--force-overwrites",
+            "--progress",
+            "--print", "before_dl:[video-started]%(id)s;%(title)s;%(album)s;%(artist)s;%(genre)s",
+            "--progress-template", "[video-downloading]%(progress._percent_str)s;%(progress._eta_str)s;%(progress._total_bytes_str)s;%(progress._speed_str)s",
+            "--print", "after_move:[video-completed]%(filepath)s;%(id)s;%(title)s;%(album)s;%(artist)s;%(genre)s",
+        ])?;
 
-        let stdout = process.stdout.take().unwrap();
-        let stderr = process.stderr.take().unwrap();
+        let worker_id = self.id_generator.generate();
+        let correlation_id = self.id_generator.generate();
 
-        ::tokio::task::spawn_blocking(move || {
-            let reader = ::std::io::BufReader::new(stdout);
+        ::tokio::task::spawn(async move {
+            use ::futures_util::StreamExt as _;
 
-            reader.lines()
-                .filter_map(|line| line.ok())
-                .filter_map(|line| VideoDownloadPayload::from_line(&line))
-                .try_for_each(|event| video_download_events_tx.send(event))
+            // ::futures_util::pin_mut!(stdout);
+
+            stdout
+                .filter_map(|line| VideoDownloadEventPayload::from_line(line))
+                .
+
+            // while let Some(line) = stdout.next().await {
+            //     if let Some(payload) = VideoDownloadEventPayload::from_line(line) {
+            //         let event = Event {
+            //             metadata: EventMetadata {
+            //                 worker_id: worker_id.clone(),
+            //                 correlation_id: correlation_id.clone(),
+            //                 timestamp: ::std::time::SystemTime::now(),
+            //             },
+            //             payload,
+            //         };
+
+            //         video_download_events_tx.send(event)?;
+            //     }
+            // }
+
+            
         });
 
         ::tokio::task::spawn_blocking(move || {
-            let reader = ::std::io::BufReader::new(stderr);
+            // let reader = ::std::io::BufReader::new(stderr);
 
-            reader.lines()
-                .filter_map(|line| line.ok())
-                .filter_map(|line| DownloadDiagnosticEvent::from_line(&line))
-                .try_for_each(|event| diagnostic_events_tx.send(event))
+            // reader.lines()
+            //     .filter_map(|line| line.ok())
+            //     .filter_map(|line| DownloadDiagnosticEvent::from_line(&line))
+            //     .try_for_each(|event| diagnostic_events_tx.send(event))
         });
 
         let video_event_stream = ::async_stream::stream! {
@@ -323,7 +370,7 @@ impl Downloader for YtDlpDownloader {
 
     async fn download_playlist(
         &self, url: MaybeOwnedString, directory: MaybeOwnedPath,
-    ) -> Fallible<(BoxedStream<PlaylistDownloadEvent>, ::std::boxed::Box<[BoxedStream<VideoDownloadEvent>]>, BoxedStream<DiagnosticEvent>)> {
+    ) -> Fallible<(BoxedStream<PlaylistDownloadEvent>, BoxedStream<VideoDownloadEvent>, BoxedStream<DiagnosticEvent>)> {
         // use ::std::io::BufRead as _;
         // use crate::private::FromYtDlpVideoDownloadOutput as _;
         // use crate::private::FromYtDlpPlaylistDownloadOutput as _;
@@ -502,31 +549,126 @@ impl Downloader for YtDlpDownloader {
         //     ::std::boxed::Box::pin(diagnostic_event_stream),
         // ))
 
-        todo!()
+        Err(::anyhow::anyhow!("Playlist downloading is not implemented yet."))
     }
 }
 
-trait ParseYtDlpLine {
-    fn parse<Line>(line: Line) -> Option<Self>
+struct TokioCommandExecutor;
+
+impl CommandExecutor for TokioCommandExecutor {
+    fn execute<Program, Args>(&self, program: Program, args: Args) -> Fallible<(BoxedStream<MaybeOwnedString>, BoxedStream<MaybeOwnedString>)>
+    where
+        Program: AsRef<::std::ffi::OsStr>,
+        Args: IntoIterator,
+        Args::Item: AsRef<::std::ffi::OsStr>,
+        Self: Sized,
+    {
+        use ::tokio::io::AsyncBufReadExt as _;
+        // use ::tokio_stream::StreamExt as _;
+        use ::futures::StreamExt as _;
+
+        let (stdout_tx, mut stdout_rx) = ::tokio::sync::mpsc::unbounded_channel();
+        let (stderr_tx, mut stderr_rx) = ::tokio::sync::mpsc::unbounded_channel();
+
+        #[rustfmt::skip]
+        let mut process = ::tokio::process::Command::new(program)
+            .args(args)
+            .stdout(::std::process::Stdio::piped())
+            .stderr(::std::process::Stdio::piped())
+            .spawn()?;
+
+        let stdout = process.stdout.take().unwrap();
+        let stderr = process.stderr.take().unwrap();
+
+        ::tokio::task::spawn(async move {
+            let lines = ::tokio::io::BufReader::new(stdout).lines();
+            
+            ::tokio_stream::wrappers::LinesStream::new(lines)
+                .filter_map(|line| async move { line.ok() })
+                .map(|line| MaybeOwnedString::from(line))
+                .for_each(|line| async {
+                    stdout_tx.send(line);
+                })
+                .await;
+        });
+
+        ::tokio::task::spawn(async move {
+            let lines = ::tokio::io::BufReader::new(stderr).lines();
+            
+            ::tokio_stream::wrappers::LinesStream::new(lines)
+                .filter_map(|line| async move { line.ok() })
+                .map(|line| MaybeOwnedString::from(line))
+                .for_each(|line| async {
+                    stderr_tx.send(line);
+                })
+                .await;
+        });
+
+        Ok((
+            ::std::boxed::Box::pin(::tokio_stream::wrappers::UnboundedReceiverStream::new(stdout_rx)),
+            ::std::boxed::Box::pin(::tokio_stream::wrappers::UnboundedReceiverStream::new(stderr_rx)),
+        ))
+    }
+}
+
+struct UuidGenerator;
+
+impl IdGenerator for UuidGenerator {
+    fn generate(&self) -> MaybeOwnedString {
+        ::uuid::Uuid::new_v4().to_string().into()
+    }
+}
+
+struct YtdlpParser;
+
+impl<T> LineParser<T> for YtdlpParser
+where
+    T: FromYtdlpLine,
+{
+    fn parse<Line>(&self, line: Line) -> Option<T>
+    where
+        T: Sized,
+        Line: AsRef<str>,
+    {
+        T::from_line(line)
+    }
+}
+
+impl<T> LinesParser<T> for YtdlpParser
+where
+    T: FromYtdlpLines,
+{
+    fn parse<Lines, Line>(&self, lines: Lines) -> Option<T>
+    where
+        T: Sized,
+        Lines: IntoIterator<Item = Line>,
+        Line: AsRef<str>,
+    {
+        T::from_lines(lines)
+    }
+}
+
+trait FromYtdlpLine {
+    fn from_line<Line>(line: Line) -> Option<Self>
     where
         Line: AsRef<str>,
         Self: Sized;
 }
 
-impl ParseYtDlpLine for VideoDownloadEventPayload {
-    fn parse<Line>(line: Line) -> Option<Self>
+impl FromYtdlpLine for VideoDownloadEventPayload {
+    fn from_line<Line>(line: Line) -> Option<Self>
     where
         Line: AsRef<str>,
         Self: Sized,
     {
-        VideoDownloadProgressUpdatedEventPayload::parse(&line).map(Self::ProgressUpdated)
-            .or(VideoDownloadStartedEventPayload::parse(&line).map(Self::Started))
-            .or(VideoDownloadCompletedEventPayload::parse(&line).map(Self::Completed))
+        VideoDownloadProgressUpdatedEventPayload::from_line(&line).map(Self::ProgressUpdated)
+            .or(VideoDownloadStartedEventPayload::from_line(&line).map(Self::Started))
+            .or(VideoDownloadCompletedEventPayload::from_line(&line).map(Self::Completed))
     }
 }
 
-impl ParseYtDlpLine for VideoDownloadStartedEventPayload {
-    fn parse<Line>(line: Line) -> Option<Self>
+impl FromYtdlpLine for VideoDownloadStartedEventPayload {
+    fn from_line<Line>(line: Line) -> Option<Self>
     where
         Line: AsRef<str>,
         Self: Sized,
@@ -538,13 +680,13 @@ impl ParseYtDlpLine for VideoDownloadStartedEventPayload {
         let captures = REGEX.captures(line.as_ref())?;
 
         let video = PartiallyResolvedVideo {
-            url: parse_attr(&captures["url"])?,
-            id: parse_attr(&captures["id"])?,
+            url: YtdlpParser::parse_attr(&captures["url"])?,
+            id: YtdlpParser::parse_attr(&captures["id"])?,
             metadata: VideoMetadata {
-                title: parse_attr(&captures["title"])?,
-                album: parse_attr(&captures["album"])?,
-                artists: parse_multivalued_attr(&captures["artist"]),
-                genres: parse_multivalued_attr(&captures["genre"]),
+                title: YtdlpParser::parse_attr(&captures["title"])?,
+                album: YtdlpParser::parse_attr(&captures["album"])?,
+                artists: YtdlpParser::parse_multivalued_attr(&captures["artist"]),
+                genres: YtdlpParser::parse_multivalued_attr(&captures["genre"]),
             },
         };
 
@@ -552,8 +694,8 @@ impl ParseYtDlpLine for VideoDownloadStartedEventPayload {
     }
 }
 
-impl ParseYtDlpLine for VideoDownloadProgressUpdatedEventPayload {
-    fn parse<Line>(line: Line) -> Option<Self>
+impl FromYtdlpLine for VideoDownloadProgressUpdatedEventPayload {
+    fn from_line<Line>(line: Line) -> Option<Self>
     where
         Line: AsRef<str>,
         Self: Sized,
@@ -565,16 +707,16 @@ impl ParseYtDlpLine for VideoDownloadProgressUpdatedEventPayload {
         let captures = REGEX.captures(line.as_ref())?;
 
         Some(Self {
-            percentage: parse_attr(&captures["percent"])?.parse().ok()?,
-            eta: parse_attr(&captures["eta"]).unwrap_or("00:00".into()),
-            size: parse_attr(&captures["size"])?,
-            speed: parse_attr(&captures["speed"])?,
+            percentage: YtdlpParser::parse_attr(&captures["percent"])?.parse().ok()?,
+            eta: YtdlpParser::parse_attr(&captures["eta"]).unwrap_or("00:00".into()),
+            size: YtdlpParser::parse_attr(&captures["size"])?,
+            speed: YtdlpParser::parse_attr(&captures["speed"])?,
         })
     }
 }
 
-impl ParseYtDlpLine for VideoDownloadCompletedEventPayload {
-    fn parse<Line>(line: Line) -> Option<Self>
+impl FromYtdlpLine for VideoDownloadCompletedEventPayload {
+    fn from_line<Line>(line: Line) -> Option<Self>
     where
         Line: AsRef<str>,
         Self: Sized,
@@ -586,23 +728,23 @@ impl ParseYtDlpLine for VideoDownloadCompletedEventPayload {
         let captures = REGEX.captures(line.as_ref())?;
 
         let video = ResolvedVideo {
-            url: parse_attr(&captures["url"])?,
-            id: parse_attr(&captures["id"])?,
+            url: YtdlpParser::parse_attr(&captures["url"])?,
+            id: YtdlpParser::parse_attr(&captures["id"])?,
             metadata: VideoMetadata {
-                title: parse_attr(&captures["title"])?,
-                album: parse_attr(&captures["album"])?,
-                artists: parse_multivalued_attr(&captures["artist"]),
-                genres: parse_multivalued_attr(&captures["genre"]),
+                title: YtdlpParser::parse_attr(&captures["title"])?,
+                album: YtdlpParser::parse_attr(&captures["album"])?,
+                artists: YtdlpParser::parse_multivalued_attr(&captures["artist"]),
+                genres: YtdlpParser::parse_multivalued_attr(&captures["genre"]),
             },
-            path: ::std::path::PathBuf::from(&*parse_attr(&captures["path"])?).into(),
+            path: ::std::path::PathBuf::from(&*YtdlpParser::parse_attr(&captures["path"])?).into(),
         };
 
         Some(Self { video })
     }
 }
 
-impl ParseYtDlpLine for DiagnosticEventPayload {
-    fn parse<Line>(line: Line) -> Option<Self>
+impl FromYtdlpLine for DiagnosticEventPayload {
+    fn from_line<Line>(line: Line) -> Option<Self>
     where
         Line: AsRef<str>,
         Self: Sized,
@@ -619,46 +761,21 @@ impl ParseYtDlpLine for DiagnosticEventPayload {
                 "ERROR" => DiagnosticLevel::Error,
                 _ => return None,
             },
-            message: parse_attr(&captures["message"])?,
+            message: YtdlpParser::parse_attr(&captures["message"])?,
         })
     }
 }
 
-fn parse_multivalued_attr(string: &str) -> Vec<MaybeOwnedString> {
-    match parse_attr(string) {
-        Some(attrs) => attrs
-            .split(',')
-            .map(normalize)
-            .map(|attr| attr.to_owned().into())
-            .collect(),
-        None => Vec::new(),
-    }
-}
-
-fn parse_attr(string: &str) -> Option<MaybeOwnedString> {
-    let string = normalize(string);
-
-    if string == "NA" {
-        None
-    } else {
-        Some(string.to_owned().into())
-    }
-}
-
-fn normalize(string: &str) -> &str {
-    string.trim()
-}
-
-trait ParseYtDlpLines {
-    fn parse<Lines, Line>(lines: Lines) -> Option<Self>
+trait FromYtdlpLines {
+    fn from_lines<Lines, Line>(lines: Lines) -> Option<Self>
     where
         Lines: IntoIterator<Item = Line>,
         Line: AsRef<str>,
         Self: Sized;
 }
 
-impl ParseYtDlpLines for PlaylistDownloadStartedEventPayload {
-    fn parse<Lines, Line>(lines: Lines) -> Option<Self>
+impl FromYtdlpLines for PlaylistDownloadStartedEventPayload {
+    fn from_lines<Lines, Line>(lines: Lines) -> Option<Self>
     where
         Lines: IntoIterator<Item = Line>,
         Line: AsRef<str>,
@@ -677,15 +794,15 @@ impl ParseYtDlpLines for PlaylistDownloadStartedEventPayload {
         for line in lines {
             if let Some(captures) = PLAYLIST_VIDEOS_REGEX.captures(line.as_ref()) {
                 videos.push(UnresolvedVideo {
-                    url: parse_attr(&captures["url"])?,
+                    url: YtdlpParser::parse_attr(&captures["url"])?,
                 });
 
             } else if let Some(captures) = PLAYLIST_METADATA_REGEX.captures(line.as_ref()) {
                 let playlist = PartiallyResolvedPlaylist {
-                    url: parse_attr(&captures["url"])?,
-                    id: parse_attr(&captures["id"])?,
+                    url: YtdlpParser::parse_attr(&captures["url"])?,
+                    id: YtdlpParser::parse_attr(&captures["id"])?,
                     metadata: PlaylistMetadata {
-                        title: parse_attr(&captures["title"])?,
+                        title: YtdlpParser::parse_attr(&captures["title"])?,
                     },
                     videos,
                 };
@@ -695,6 +812,33 @@ impl ParseYtDlpLines for PlaylistDownloadStartedEventPayload {
         }
 
         None
+    }
+}
+
+impl YtdlpParser {
+    fn parse_multivalued_attr(string: &str) -> Vec<MaybeOwnedString> {
+        match Self::parse_attr(string) {
+            Some(attrs) => attrs
+                .split(',')
+                .map(Self::normalize)
+                .map(|attr| attr.to_owned().into())
+                .collect(),
+            None => Vec::new(),
+        }
+    }
+
+    fn parse_attr(string: &str) -> Option<MaybeOwnedString> {
+        let string = Self::normalize(string);
+
+        if string == "NA" {
+            None
+        } else {
+            Some(string.to_owned().into())
+        }
+    }
+
+    fn normalize(string: &str) -> &str {
+        string.trim()
     }
 }
 

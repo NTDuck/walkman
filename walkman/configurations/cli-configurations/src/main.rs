@@ -2,8 +2,8 @@ pub(crate) mod utils;
 
 use ::infrastructures::DownloadVideoView;
 use ::infrastructures::Id3PlaylistAsAlbumMetadataWriter;
-use ::infrastructures::YtDlpDownloader;
-use ::infrastructures::YtDlpDownloaderConfigurations;
+use ::infrastructures::YtdlpDownloader;
+use ::infrastructures::YtdlpConfigurations;
 use ::use_cases::boundaries::DownloadPlaylistRequestModel;
 use ::use_cases::boundaries::DownloadVideoRequestModel;
 use ::use_cases::interactors::DownloadPlaylistInteractor;
@@ -14,7 +14,7 @@ use crate::utils::aliases::Fallible;
 #[tokio::main]
 async fn main() -> Fallible<()> {
     let download_video_view = std::sync::Arc::new(DownloadVideoView::new()?);
-    let downloader = std::sync::Arc::new(YtDlpDownloader::new(YtDlpDownloaderConfigurations {
+    let downloader = std::sync::Arc::new(YtdlpDownloader::new(YtdlpConfigurations {
         workers: 4,
     }));
     let metadata_writer = std::sync::Arc::new(Id3PlaylistAsAlbumMetadataWriter::new());

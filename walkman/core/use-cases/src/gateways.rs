@@ -21,12 +21,12 @@ pub trait MetadataWriter: Send + Sync {
     async fn write_video(&self, video: &ResolvedVideo) -> Fallible<()>;
 
     async fn write_playlist(&self, playlist: &ResolvedPlaylist) -> Fallible<()> {
-        use ::futures_util::StreamExt as _;
+        use ::futures::StreamExt as _;
 
         let mut futures = playlist.videos
             .iter()
             .map(|video| self.write_video(video))
-            .collect::<::futures_util::stream::FuturesUnordered<_>>();
+            .collect::<::futures::stream::FuturesUnordered<_>>();
 
         // https://users.rust-lang.org/t/awaiting-futuresunordered/49295
         while (futures.next().await).is_some() {}

@@ -42,9 +42,9 @@ impl Accept<DownloadVideoRequestModel> for DownloadVideoInteractor {
 #[async_trait]
 impl Accept<BoxedStream<VideoDownloadEvent>> for DownloadVideoInteractor {
     async fn accept(&self, events: BoxedStream<VideoDownloadEvent>) -> Fallible<()> {
-        use ::futures_util::StreamExt as _;
+        use ::futures::StreamExt as _;
         
-        ::futures_util::pin_mut!(events);
+        ::futures::pin_mut!(events);
 
         while let Some(event) = events.next().await {
             self.output_boundary.update(&event).await?;
@@ -61,9 +61,9 @@ impl Accept<BoxedStream<VideoDownloadEvent>> for DownloadVideoInteractor {
 #[async_trait]
 impl Accept<BoxedStream<DiagnosticEvent>> for DownloadVideoInteractor {
     async fn accept(&self, events: BoxedStream<DiagnosticEvent>) -> Fallible<()> {
-        use ::futures_util::StreamExt as _;
+        use ::futures::StreamExt as _;
 
-        ::futures_util::pin_mut!(events);
+        ::futures::pin_mut!(events);
 
         while let Some(event) = events.next().await {
             self.output_boundary.update(&event).await?;
@@ -100,9 +100,9 @@ impl Accept<DownloadPlaylistRequestModel> for DownloadPlaylistInteractor {
 #[async_trait]
 impl Accept<BoxedStream<PlaylistDownloadEvent>> for DownloadPlaylistInteractor {
     async fn accept(&self, events: BoxedStream<PlaylistDownloadEvent>) -> Fallible<()> {
-        use ::futures_util::StreamExt as _;
+        use ::futures::StreamExt as _;
 
-        ::futures_util::pin_mut!(events);
+        ::futures::pin_mut!(events);
 
         while let Some(event) = events.next().await {
             self.output_boundary.update(&event).await?;
@@ -119,9 +119,9 @@ impl Accept<BoxedStream<PlaylistDownloadEvent>> for DownloadPlaylistInteractor {
 #[async_trait]
 impl Accept<BoxedStream<VideoDownloadEvent>> for DownloadPlaylistInteractor {
     async fn accept(&self, events: BoxedStream<VideoDownloadEvent>) -> Fallible<()> {
-        use ::futures_util::StreamExt as _;
+        use ::futures::StreamExt as _;
 
-        ::futures_util::pin_mut!(events);
+        ::futures::pin_mut!(events);
 
         while let Some(event) = events.next().await {
             self.output_boundary.update(&event).await?;
@@ -134,9 +134,9 @@ impl Accept<BoxedStream<VideoDownloadEvent>> for DownloadPlaylistInteractor {
 #[async_trait]
 impl Accept<BoxedStream<DiagnosticEvent>> for DownloadPlaylistInteractor {
     async fn accept(&self, events: BoxedStream<DiagnosticEvent>) -> Fallible<()> {
-        use ::futures_util::StreamExt as _;
+        use ::futures::StreamExt as _;
 
-        ::futures_util::pin_mut!(events);
+        ::futures::pin_mut!(events);
 
         while let Some(event) = events.next().await {
             self.output_boundary.update(&event).await?;

@@ -5,7 +5,17 @@ pub mod aliases {
     pub type MaybeOwnedPath = ::std::borrow::Cow<'static, ::std::path::Path>;
 
     pub type BoxedStream<T> =
-        ::std::pin::Pin<::std::boxed::Box<dyn ::futures_core::Stream<Item = T> + ::core::marker::Send>>;
+        ::std::pin::Pin<::std::boxed::Box<dyn ::futures::Stream<Item = T> + ::core::marker::Send>>;
+
+    pub type BoxedIterator<T> =
+        ::std::boxed::Box<dyn Iterator<Item = T> + ::core::marker::Send>;
+}
+
+
+pub mod extensions {
+    // pub trait ResultExt<T, E>: Result<T, E> {
+        
+    // }
 }
 
 pub mod macros {
