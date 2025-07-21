@@ -6,16 +6,6 @@ pub mod aliases {
 
     pub type BoxedStream<T> =
         ::std::pin::Pin<::std::boxed::Box<dyn ::futures::Stream<Item = T> + ::core::marker::Send>>;
-
-    pub type BoxedIterator<T> =
-        ::std::boxed::Box<dyn Iterator<Item = T> + ::core::marker::Send>;
-}
-
-
-pub mod extensions {
-    // pub trait ResultExt<T, E>: Result<T, E> {
-        
-    // }
 }
 
 pub mod macros {

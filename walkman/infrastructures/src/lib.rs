@@ -239,11 +239,11 @@ impl Update<DiagnosticEvent> for DownloadPlaylistView {
 }
 
 #[derive(new)]
-#[derive(Clone)]
-pub struct YtdlpDownloader {
-    command_executor: ::std::sync::Arc<dyn CommandExecutor>,
-    id_generator: ::std::sync::Arc<dyn IdGenerator>,
-    parser: ::std::sync::Arc<YtdlpParser>,
+#[derive(Debug, Clone)]
+pub struct YtdlpDownloader<CommandExecutorImpl, IdGeneratorImpl, ParserImpl> {
+    command_executor: ::std::sync::Arc<CommandExecutorImpl>,
+    id_generator: ::std::sync::Arc<IdGeneratorImpl>,
+    parser: ::std::sync::Arc<ParserImpl>,
 
     configurations: YtdlpConfigurations,
 }
@@ -253,12 +253,18 @@ trait CommandExecutor: Send + Sync {
     where
         Program: AsRef<::std::ffi::OsStr>,
         Args: IntoIterator,
-        Args::Item: AsRef<::std::ffi::OsStr>,
-        Self: Sized;
+        Args::Item: AsRef<::std::ffi::OsStr>;
 }
 
 trait IdGenerator: Send + Sync {
     fn generate(&self) -> MaybeOwnedString;
+}
+
+trait Parser: LineParser<VideoDownloadEventPayload> + LineParser<DiagnosticEventPayload> {}
+
+impl<T> Parser for T
+where T: LineParser<VideoDownloadEventPayload> + LineParser<DiagnosticEventPayload>,
+{
 }
 
 trait LineParser<T>: Send + Sync {
@@ -282,14 +288,17 @@ pub struct YtdlpConfigurations {
 }
 
 #[async_trait]
-impl Downloader for YtdlpDownloader {
+impl<CommandExecutorImpl, IdGeneratorImpl, ParserImpl> Downloader for YtdlpDownloader<CommandExecutorImpl, IdGeneratorImpl, ParserImpl>
+where
+    CommandExecutorImpl: CommandExecutor + 'static,
+    IdGeneratorImpl: IdGenerator + 'static,
+    ParserImpl: Parser + 'static,
+{
     async fn download_video(
         &self, url: MaybeOwnedString, directory: MaybeOwnedPath,
     ) -> Fallible<(BoxedStream<VideoDownloadEvent>, BoxedStream<DiagnosticEvent>)> {
-        use ::std::io::BufRead as _;
-
-        let (video_download_events_tx, mut video_download_events_rx) = ::tokio::sync::mpsc::unbounded_channel();
-        let (diagnostic_events_tx, mut diagnostic_events_rx) = ::tokio::sync::mpsc::unbounded_channel();
+        let (video_download_events_tx, video_download_events_rx) = ::tokio::sync::mpsc::unbounded_channel();
+        let (diagnostic_events_tx, diagnostic_events_rx) = ::tokio::sync::mpsc::unbounded_channel();
 
         #[rustfmt::skip]
         let (stdout, stderr) = self.command_executor.execute("yt-dlp", [
@@ -314,57 +323,57 @@ impl Downloader for YtdlpDownloader {
         let worker_id = self.id_generator.generate();
         let correlation_id = self.id_generator.generate();
 
-        ::tokio::task::spawn(async move {
-            use ::futures_util::StreamExt as _;
+        ::tokio::task::spawn({
+            let parser = self.parser.clone();
 
-            // ::futures_util::pin_mut!(stdout);
+            let worker_id = worker_id.clone();
+            let correlation_id = correlation_id.clone();
 
-            stdout
-                .filter_map(|line| VideoDownloadEventPayload::from_line(line))
-                .
+            async move {
+                use ::futures::StreamExt as _;
 
-            // while let Some(line) = stdout.next().await {
-            //     if let Some(payload) = VideoDownloadEventPayload::from_line(line) {
-            //         let event = Event {
-            //             metadata: EventMetadata {
-            //                 worker_id: worker_id.clone(),
-            //                 correlation_id: correlation_id.clone(),
-            //                 timestamp: ::std::time::SystemTime::now(),
-            //             },
-            //             payload,
-            //         };
-
-            //         video_download_events_tx.send(event)?;
-            //     }
-            // }
-
-            
+                stdout
+                    .filter_map(|line| async { parser.parse(line) })
+                    .map(|payload| Event {
+                        metadata: EventMetadata {
+                            worker_id: worker_id.clone(),
+                            correlation_id: correlation_id.clone(),
+                            timestamp: ::std::time::SystemTime::now(),
+                        },
+                        payload,
+                    })
+                    .for_each(|event| async { video_download_events_tx.send(event).unwrap() })
+                    .await;
+            }
         });
 
-        ::tokio::task::spawn_blocking(move || {
-            // let reader = ::std::io::BufReader::new(stderr);
+        ::tokio::task::spawn({
+            let parser = self.parser.clone();
 
-            // reader.lines()
-            //     .filter_map(|line| line.ok())
-            //     .filter_map(|line| DownloadDiagnosticEvent::from_line(&line))
-            //     .try_for_each(|event| diagnostic_events_tx.send(event))
+            let worker_id = worker_id.clone();
+            let correlation_id = correlation_id.clone();
+
+            async move {
+                use ::futures::StreamExt as _;
+
+                stderr
+                    .filter_map(|line| async { parser.parse(line) })
+                    .map(|payload| Event {
+                        metadata: EventMetadata {
+                            worker_id: worker_id.clone(),
+                            correlation_id: correlation_id.clone(),
+                            timestamp: ::std::time::SystemTime::now(),
+                        },
+                        payload,
+                    })
+                    .for_each(|event| async { diagnostic_events_tx.send(event).unwrap() })
+                    .await;
+            }
         });
-
-        let video_event_stream = ::async_stream::stream! {
-            while let Some(event) = video_download_events_rx.recv().await {
-                yield event;
-            }
-        };
-
-        let diagnostic_event_stream = ::async_stream::stream! {
-            while let Some(event) = diagnostic_events_rx.recv().await {
-                yield event;
-            }
-        };
 
         Ok((
-            ::std::boxed::Box::pin(video_event_stream),
-            ::std::boxed::Box::pin(diagnostic_event_stream),
+            ::std::boxed::Box::pin(::tokio_stream::wrappers::UnboundedReceiverStream::new(video_download_events_rx)),
+            ::std::boxed::Box::pin(::tokio_stream::wrappers::UnboundedReceiverStream::new(diagnostic_events_rx)),
         ))
     }
 
@@ -564,11 +573,10 @@ impl CommandExecutor for TokioCommandExecutor {
         Self: Sized,
     {
         use ::tokio::io::AsyncBufReadExt as _;
-        // use ::tokio_stream::StreamExt as _;
         use ::futures::StreamExt as _;
 
-        let (stdout_tx, mut stdout_rx) = ::tokio::sync::mpsc::unbounded_channel();
-        let (stderr_tx, mut stderr_rx) = ::tokio::sync::mpsc::unbounded_channel();
+        let (stdout_tx, stdout_rx) = ::tokio::sync::mpsc::unbounded_channel();
+        let (stderr_tx, stderr_rx) = ::tokio::sync::mpsc::unbounded_channel();
 
         #[rustfmt::skip]
         let mut process = ::tokio::process::Command::new(program)
@@ -586,9 +594,7 @@ impl CommandExecutor for TokioCommandExecutor {
             ::tokio_stream::wrappers::LinesStream::new(lines)
                 .filter_map(|line| async move { line.ok() })
                 .map(|line| MaybeOwnedString::from(line))
-                .for_each(|line| async {
-                    stdout_tx.send(line);
-                })
+                .for_each(|line| async { stdout_tx.send(line).unwrap() })
                 .await;
         });
 
@@ -598,9 +604,7 @@ impl CommandExecutor for TokioCommandExecutor {
             ::tokio_stream::wrappers::LinesStream::new(lines)
                 .filter_map(|line| async move { line.ok() })
                 .map(|line| MaybeOwnedString::from(line))
-                .for_each(|line| async {
-                    stderr_tx.send(line);
-                })
+                .for_each(|line| async { stderr_tx.send(line).unwrap() })
                 .await;
         });
 
