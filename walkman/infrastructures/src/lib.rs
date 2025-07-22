@@ -380,7 +380,6 @@ where
                 };
 
                 playlist_download_events_tx.send(event)?;
-
                 Ok(playlist)
             },
 
@@ -427,8 +426,6 @@ where
                 let unresolved_videos = ::std::sync::Arc::clone(&unresolved_videos);
 
                 async move {
-                    use ::futures::StreamExt as _;
-
                     while let Some(video) = unresolved_videos.lock().await.pop_front() {
                         let (video_download_events, diagnostic_events) = ::std::sync::Arc::clone(&this).download_video(video.url.clone(), directory.clone()).await?;
 
@@ -511,6 +508,8 @@ where
             },
             payload: PlaylistDownloadEventPayload::Completed(PlaylistDownloadCompletedEventPayload { playlist }),
         };
+
+        playlist_download_events_tx.send(event)?;
 
         Ok((
             ::std::boxed::Box::pin(::tokio_stream::wrappers::UnboundedReceiverStream::new(playlist_download_events_rx)),
