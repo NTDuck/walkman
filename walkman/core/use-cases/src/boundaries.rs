@@ -51,10 +51,10 @@ where
 
 #[async_trait]
 pub trait Accept<Request>: Send + Sync {
-    async fn accept(&self, request: Request) -> Fallible<()>;
+    async fn accept(self: ::std::sync::Arc<Self>, request: Request) -> Fallible<()>;
 }
 
 #[async_trait]
 pub trait Update<Event>: Send + Sync {
-    async fn update(&self, event: &Event) -> Fallible<()>;
+    async fn update(self: ::std::sync::Arc<Self>, event: &Event) -> Fallible<()>;
 }

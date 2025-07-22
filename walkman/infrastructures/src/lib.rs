@@ -33,6 +33,7 @@ use crate::utils::aliases::BoxedStream;
 use crate::utils::aliases::Fallible;
 use crate::utils::aliases::MaybeOwnedPath;
 use crate::utils::aliases::MaybeOwnedString;
+use crate::utils::extensions::OptionExt;
 
 pub struct DownloadVideoView {
     progress_bars: ::indicatif::MultiProgress,
@@ -260,10 +261,10 @@ trait IdGenerator: Send + Sync {
     fn generate(&self) -> MaybeOwnedString;
 }
 
-trait Parser: LineParser<VideoDownloadEventPayload> + LineParser<DiagnosticEventPayload> {}
+trait Parser: LinesParser<PlaylistDownloadStartedEventPayload> + LineParser<VideoDownloadEventPayload> + LineParser<DiagnosticEventPayload> {}
 
 impl<T> Parser for T
-where T: LineParser<VideoDownloadEventPayload> + LineParser<DiagnosticEventPayload>,
+where T: LinesParser<PlaylistDownloadStartedEventPayload> + LineParser<VideoDownloadEventPayload> + LineParser<DiagnosticEventPayload>,
 {
 }
 
@@ -274,11 +275,12 @@ trait LineParser<T>: Send + Sync {
         Line: AsRef<str>;    
 }
 
+#[async_trait]
 trait LinesParser<T>: Send + Sync {
-    fn parse<Lines, Line>(&self, lines: Lines) -> Option<T>
+    async fn parse<Lines, Line>(&self, lines: Lines) -> Option<T>
     where
         T: Sized,
-        Lines: IntoIterator<Item = Line>,
+        Lines: ::futures::Stream<Item = Line> + ::core::marker::Send,
         Line: AsRef<str>;
 }
 
@@ -320,20 +322,21 @@ where
             "--print", "after_move:[video-completed]%(filepath)s;%(id)s;%(title)s;%(album)s;%(artist)s;%(genre)s",
         ])?;
 
-        let worker_id = self.id_generator.generate();
         let correlation_id = self.id_generator.generate();
 
         ::tokio::task::spawn({
             let parser = self.parser.clone();
 
-            let worker_id = worker_id.clone();
+            let video_download_events_tx = video_download_events_tx.clone();
+
+            let worker_id = self.id_generator.generate();
             let correlation_id = correlation_id.clone();
 
             async move {
                 use ::futures::StreamExt as _;
 
                 stdout
-                    .filter_map(|line| async { parser.parse(line) })
+                    .filter_map(|line| async { LineParser::parse(&*parser, line) })
                     .map(|payload| Event {
                         metadata: EventMetadata {
                             worker_id: worker_id.clone(),
@@ -350,14 +353,16 @@ where
         ::tokio::task::spawn({
             let parser = self.parser.clone();
 
-            let worker_id = worker_id.clone();
+            let diagnostic_events_tx = diagnostic_events_tx.clone();
+
+            let worker_id = self.id_generator.generate();
             let correlation_id = correlation_id.clone();
 
             async move {
                 use ::futures::StreamExt as _;
 
                 stderr
-                    .filter_map(|line| async { parser.parse(line) })
+                    .filter_map(|line| async { LineParser::parse(&*parser, line) })
                     .map(|payload| Event {
                         metadata: EventMetadata {
                             worker_id: worker_id.clone(),
@@ -380,185 +385,213 @@ where
     async fn download_playlist(
         &self, url: MaybeOwnedString, directory: MaybeOwnedPath,
     ) -> Fallible<(BoxedStream<PlaylistDownloadEvent>, BoxedStream<VideoDownloadEvent>, BoxedStream<DiagnosticEvent>)> {
-        // use ::std::io::BufRead as _;
-        // use crate::private::FromYtDlpVideoDownloadOutput as _;
-        // use crate::private::FromYtDlpPlaylistDownloadOutput as _;
+        let (playlist_download_events_tx, playlist_download_events_rx) = ::tokio::sync::mpsc::unbounded_channel();
+        let (video_download_events_tx, video_download_events_rx) = ::tokio::sync::mpsc::unbounded_channel();
+        let (diagnostic_events_tx, diagnostic_events_rx) = ::tokio::sync::mpsc::unbounded_channel();
 
-        // let (playlist_event_stream_tx, mut playlist_event_stream_rx) = ::tokio::sync::mpsc::unbounded_channel();
-        // let playlist_event_stream_tx = ::std::sync::Arc::new(playlist_event_stream_tx);
+        let (stdout, stderr) = self.command_executor.execute("yt-dlp", [
+            &*url.clone(),
+            "--paths", &directory.to_str().unwrap(),
+            "--quiet",
+            "--flat-playlist",
+            "--color", "no_color",
+            "--print", "playlist:[playlist-started:metadata]%(id)s;%(title)s",
+            "--print", "video:[playlist-started:url]%(url)s"
+        ])?;
 
-        // let (video_event_stream_txs, video_event_stream_rxs): (Vec<_>, Vec<_>) = (0..self.configurations.workers)
-        //     .map(|_| ::tokio::sync::mpsc::unbounded_channel())
-        //     .map(|(tx, rx)| (::std::sync::Arc::new(tx), rx))
-        //     .unzip();
+        let correlation_id = self.id_generator.generate();
 
-        // let (diagnostic_event_stream_tx, mut diagnostic_event_stream_rx) = ::tokio::sync::mpsc::unbounded_channel();
-        // let diagnostic_event_stream_tx = ::std::sync::Arc::new(diagnostic_event_stream_tx);
+        ::tokio::task::spawn({
+            let parser = self.parser.clone();
 
-        // #[rustfmt::skip]
-        // let mut process = ::std::process::Command::new("yt-dlp")
-        //     .args([
-        //         &*url,
-        //         "--paths", &directory.to_str().unwrap(),
-        //         "--quiet",
-        //         "--flat-playlist",
-        //         "--color", "no_color",
-        //         "--print", "playlist:[playlist-started:metadata]%(id)s;%(title)s",
-        //         "--print", "video:[playlist-started:url]%(url)s"
-        //     ])
-        //     .stdout(::std::process::Stdio::piped())
-        //     .stderr(::std::process::Stdio::piped())
-        //     .spawn()?;
+            let diagnostic_events_tx = diagnostic_events_tx.clone();
 
-        // let stdout = process.stdout.take().unwrap();
-        // let stderr = process.stderr.take().unwrap();
+            let worker_id = self.id_generator.generate();
+            let correlation_id = correlation_id.clone();
+
+            async move {
+                use ::futures::StreamExt as _;
+
+                stderr
+                    .filter_map(|line| async { LineParser::parse(&*parser, line) })
+                    .map(|payload| Event {
+                        metadata: EventMetadata {
+                            worker_id: worker_id.clone(),
+                            correlation_id: correlation_id.clone(),
+                            timestamp: ::std::time::SystemTime::now(),
+                        },
+                        payload,
+                    })
+                    .for_each(|event| async { diagnostic_events_tx.send(event).unwrap() })
+                    .await;
+            }
+        });
+
+        let this = ::std::sync::Arc::new(self.clone());
+        let playlist = ::tokio::spawn({
+            let parser = this.parser.clone();
+
+            let playlist_download_events_tx = playlist_download_events_tx.clone();
+
+            let worker_id = this.id_generator.generate();
+            let correlation_id = correlation_id.clone();
+
+            async move {
+                let payload = LinesParser::parse(&*parser, stdout).await.some()?;
+                let playlist = payload.playlist.clone();
+
+                let event = Event {
+                    metadata: EventMetadata {
+                        worker_id: worker_id.clone(),
+                        correlation_id: correlation_id.clone(),
+                        timestamp: ::std::time::SystemTime::now(),
+                    },
+                    payload: PlaylistDownloadEventPayload::Started(payload),
+                };
+
+                playlist_download_events_tx.send(event)?;
+
+                Ok::<_, ::anyhow::Error>(playlist)
+            }
+        }).await??;
+
+        let completed = ::std::sync::Arc::new(::std::sync::atomic::AtomicUsize::new(0));
+        let total = playlist.videos.len();
+
+        let resolved_videos: ::std::sync::Arc<::tokio::sync::Mutex<Vec<_>>> =
+            ::std::sync::Arc::new(::tokio::sync::Mutex::new(Vec::with_capacity(total)));
+
+        let unresolved_videos: ::std::sync::Arc<::tokio::sync::Mutex<::std::collections::VecDeque<_>>> =
+            ::std::sync::Arc::new(::tokio::sync::Mutex::new(playlist.videos.clone().into()));
+
+        let this = Self {
+            command_executor: this.command_executor.clone(),
+            id_generator: this.id_generator.clone(),
+            parser: this.parser.clone(),
+            configurations: this.configurations,
+        };
+
+        let this = ::std::sync::Arc::new(this);
+
+        let playlist_download_events_tx = playlist_download_events_tx.clone();
+        let video_download_events_tx = video_download_events_tx.clone();
+        let diagnostic_events_tx = diagnostic_events_tx.clone();
+
+        let this = ::std::sync::Arc::clone(&this);
+        let directory = directory.to_owned(); // force into owned path
+        let url = url.to_owned();             // force into owned string
+
+        let worker_id = this.id_generator.generate();
+        let correlation_id = correlation_id.clone();
+
+        let directory = directory.clone();
+        let completed = completed.clone();
+        let resolved_videos = resolved_videos.clone();
+        let unresolved_videos = unresolved_videos.clone();
         
-        // ::tokio::task::spawn_blocking({
-        //     let diagnostic_event_stream_tx = diagnostic_event_stream_tx.clone();
+        for _ in 0..self.configurations.workers {
+            let this = ::std::sync::Arc::clone(&this);
 
-        //     move || {
-        //         let reader = ::std::io::BufReader::new(stderr);
+            let playlist_download_events_tx = playlist_download_events_tx.clone();
+            let video_download_events_tx = video_download_events_tx.clone();
+            let diagnostic_events_tx = diagnostic_events_tx.clone();
 
-        //         reader.lines()
-        //             .filter_map(|line| line.ok())
-        //             .filter_map(|line| DownloadDiagnosticEvent::from_line(&line))
-        //             .try_for_each(|event| diagnostic_event_stream_tx.send(event))
-        //     }
-        // });
+            let worker_id = this.id_generator.generate();
+            let correlation_id = correlation_id.clone();
 
-        // let playlist = ::tokio::task::spawn_blocking({
-        //     let playlist_event_stream_tx = playlist_event_stream_tx.clone();
+            let directory = directory.clone();
+            let completed = completed.clone();
+            let resolved_videos = resolved_videos.clone();
+            let unresolved_videos = unresolved_videos.clone();
 
-        //     move || {
-        //         let reader = ::std::io::BufReader::new(stdout);
+            ::tokio::spawn({
+                let this = ::std::sync::Arc::clone(&this);
 
-        //         let lines = reader.lines()
-        //             .filter_map(|line| line.ok());
+                let playlist_download_events_tx = playlist_download_events_tx.clone();
+                let video_download_events_tx = video_download_events_tx.clone();
+                let diagnostic_events_tx = diagnostic_events_tx.clone();
 
-        //         let event = PlaylistDownloadStartedEvent::from_lines(lines).unwrap();
-        //         let playlist = event.playlist.clone();
+                let worker_id = this.id_generator.generate();
+                let correlation_id = correlation_id.clone();
 
-        //         playlist_event_stream_tx.send(PlaylistDownloadEvent::Started(event))?;
+                let directory = directory.clone();
+                let completed = completed.clone();
+                let resolved_videos = resolved_videos.clone();
+                let unresolved_videos = unresolved_videos.clone();
 
-        //         Ok::<_, ::anyhow::Error>(playlist)
-        //     }
-        // }).await??;
+                async move {
+                    use ::futures::StreamExt as _;
 
-        // let completed = ::std::sync::Arc::new(::std::sync::atomic::AtomicUsize::new(0));
-        // let total = playlist.metadata.video_urls.len();
+                    while let Some(video) = unresolved_videos.lock().await.pop_front() {
+                        let (video_download_events, diagnostic_events) = this.clone().download_video(video.url.clone(), directory.clone()).await?;
 
-        // let playlist_videos: ::std::sync::Arc<::tokio::sync::Mutex<Vec<_>>> =
-        //     ::std::sync::Arc::new(::tokio::sync::Mutex::new(Vec::with_capacity(total)));
+                        ::tokio::try_join!(
+                            async {
+                                ::futures::pin_mut!(video_download_events);
 
-        // let playlist_video_urls: ::std::sync::Arc<::tokio::sync::Mutex<::std::collections::VecDeque<_>>> =
-        //     ::std::sync::Arc::new(::tokio::sync::Mutex::new(playlist.metadata.video_urls.clone().into()));
+                                while let Some(event) = video_download_events.next().await {
+                                    match event.payload {
+                                        VideoDownloadEventPayload::Completed(ref payload) => {
+                                            completed.fetch_add(1, ::std::sync::atomic::Ordering::Relaxed);
+                                            resolved_videos.lock().await.push(payload.video.clone());
 
-        // for index in 0..self.configurations.workers {
-        //     ::tokio::spawn({
-        //         let this = self.clone();
+                                            let event = Event {
+                                                metadata: EventMetadata {
+                                                    worker_id: worker_id.clone(),
+                                                    correlation_id: correlation_id.clone(),
+                                                    timestamp: ::std::time::SystemTime::now(),
+                                                },
+                                                payload: PlaylistDownloadEventPayload::ProgressUpdated(
+                                                    PlaylistDownloadProgressUpdatedEventPayload {
+                                                        video: payload.video.clone(),
+                                                        completed: completed.load(::std::sync::atomic::Ordering::Relaxed),
+                                                        total,
+                                                    },
+                                                ),
+                                            };
 
-        //         let playlist_event_stream_tx = playlist_event_stream_tx.clone();
-        //         let video_event_stream_tx = video_event_stream_txs[index].clone();
-        //         let diagnostic_event_stream_tx = diagnostic_event_stream_tx.clone();
+                                            playlist_download_events_tx.send(event)?;
+                                        },
+                                        _ => {},
+                                    }
 
-        //         let directory = directory.clone();
-        //         let completed = completed.clone();
+                                    video_download_events_tx.send(event)?;
+                                }
 
-        //         let playlist_videos = playlist_videos.clone();
-        //         let playlist_video_urls = playlist_video_urls.clone();
+                                Ok::<_, ::anyhow::Error>(())
+                            },
 
-        //         async move {
-        //             while let Some(playlist_video_url) = playlist_video_urls.lock().await.pop_front() {
-        //                 let (video_event_stream, video_diagnostic_event_stream) = this.download_video(playlist_video_url, directory.clone()).await?;
+                            async {
+                                ::futures::pin_mut!(diagnostic_events);
 
-        //                 ::tokio::try_join!(
-        //                     async {
-        //                         use ::futures_util::StreamExt as _;
+                                while let Some(event) = diagnostic_events.next().await {
+                                    let event = Event {
+                                        metadata: EventMetadata {
+                                            worker_id: worker_id.clone(),
+                                            correlation_id: correlation_id.clone(),
+                                            timestamp: ::std::time::SystemTime::now(),
+                                        },
+                                        payload: event.payload,
+                                    };
 
-        //                         ::futures_util::pin_mut!(video_event_stream);
+                                    diagnostic_events_tx.send(event)?;
+                                }
 
-        //                         while let Some(event) = video_event_stream.next().await {
-        //                             match event {
-        //                                 VideoDownloadPayload::Completed(VideoDownloadCompletedEvent { ref video }) => {
-        //                                     completed.fetch_add(1, ::std::sync::atomic::Ordering::Relaxed);
-        //                                     playlist_videos.lock().await.push(video.clone());
+                                Ok::<_, ::anyhow::Error>(())
+                            },
+                        )?;
+                    }
 
-        //                                     let event = PlaylistDownloadProgressUpdatedEvent {
-        //                                         video: video.clone(),
+                    Ok::<_, ::anyhow::Error>(())
+                }
+            });
+        }
 
-        //                                         completed: completed.load(::std::sync::atomic::Ordering::Relaxed),
-        //                                         total,
-        //                                     };
-
-        //                                     playlist_event_stream_tx.send(PlaylistDownloadEvent::ProgressUpdated(event))?;
-        //                                 },
-        //                                 _ => {},
-        //                             }
-
-        //                             video_event_stream_tx.send(event)?;
-        //                         }
-
-        //                         Ok::<_, ::anyhow::Error>(())
-        //                     },
-
-        //                     async {
-        //                         use ::futures_util::StreamExt as _;
-                            
-        //                         ::futures_util::pin_mut!(video_diagnostic_event_stream);
-
-        //                         while let Some(event) = video_diagnostic_event_stream.next().await {
-        //                             diagnostic_event_stream_tx.send(event)?;
-        //                         }
-
-        //                         Ok::<_, ::anyhow::Error>(())
-        //                     },
-        //                 )?;
-        //             }
-
-        //             Ok::<_, ::anyhow::Error>(())
-        //         }
-        //     });
-        // }
-
-        // let playlist = Playlist {
-        //     id: playlist.id,
-        //     metadata: playlist.metadata,
-        //     videos: ::std::mem::take(&mut *playlist_videos.lock().await),
-        // };
-
-        // let event = PlaylistDownloadCompletedEvent { playlist };
-        // playlist_event_stream_tx.send(PlaylistDownloadEvent::Completed(event))?;
-
-        // let playlist_event_stream = ::async_stream::stream! {
-        //     while let Some(event) = playlist_event_stream_rx.recv().await {
-        //         yield event;
-        //     }
-        // };
-
-        // let video_event_streams = video_event_stream_rxs
-        //     .into_iter()
-        //     .map(|mut video_event_stream_rx| ::async_stream::stream! {
-        //         while let Some(event) = video_event_stream_rx.recv().await {
-        //             yield event;
-        //         }
-        //     })
-        //     .map(|stream| ::std::boxed::Box::pin(stream) as BoxedStream<VideoDownloadPayload>)
-        //     .collect::<Vec<_>>()
-        //     .into_boxed_slice();
-
-        // let diagnostic_event_stream = ::async_stream::stream! {
-        //     while let Some(event) = diagnostic_event_stream_rx.recv().await {
-        //         yield event;
-        //     }
-        // };
-
-        // Ok((
-        //     ::std::boxed::Box::pin(playlist_event_stream),
-        //     video_event_streams,
-        //     ::std::boxed::Box::pin(diagnostic_event_stream),
-        // ))
-
-        Err(::anyhow::anyhow!("Playlist downloading is not implemented yet."))
+        Ok((
+            ::std::boxed::Box::pin(::tokio_stream::wrappers::UnboundedReceiverStream::new(playlist_download_events_rx)),
+            ::std::boxed::Box::pin(::tokio_stream::wrappers::UnboundedReceiverStream::new(video_download_events_rx)),
+            ::std::boxed::Box::pin(::tokio_stream::wrappers::UnboundedReceiverStream::new(diagnostic_events_rx)),
+        ))
     }
 }
 
@@ -578,7 +611,6 @@ impl CommandExecutor for TokioCommandExecutor {
         let (stdout_tx, stdout_rx) = ::tokio::sync::mpsc::unbounded_channel();
         let (stderr_tx, stderr_rx) = ::tokio::sync::mpsc::unbounded_channel();
 
-        #[rustfmt::skip]
         let mut process = ::tokio::process::Command::new(program)
             .args(args)
             .stdout(::std::process::Stdio::piped())
@@ -638,17 +670,18 @@ where
     }
 }
 
+#[async_trait]
 impl<T> LinesParser<T> for YtdlpParser
 where
     T: FromYtdlpLines,
 {
-    fn parse<Lines, Line>(&self, lines: Lines) -> Option<T>
+    async fn parse<Lines, Line>(&self, lines: Lines) -> Option<T>
     where
         T: Sized,
-        Lines: IntoIterator<Item = Line>,
+        Lines: ::futures::Stream<Item = Line> + ::core::marker::Send,
         Line: AsRef<str>,
     {
-        T::from_lines(lines)
+        T::from_lines(lines).await
     }
 }
 
@@ -770,21 +803,25 @@ impl FromYtdlpLine for DiagnosticEventPayload {
     }
 }
 
-trait FromYtdlpLines {
-    fn from_lines<Lines, Line>(lines: Lines) -> Option<Self>
+#[async_trait]
+trait FromYtdlpLines: Send + Sync {
+    async fn from_lines<Lines, Line>(lines: Lines) -> Option<Self>
     where
-        Lines: IntoIterator<Item = Line>,
+        Lines: ::futures::Stream<Item = Line> + ::core::marker::Send,
         Line: AsRef<str>,
         Self: Sized;
 }
 
+#[async_trait]
 impl FromYtdlpLines for PlaylistDownloadStartedEventPayload {
-    fn from_lines<Lines, Line>(lines: Lines) -> Option<Self>
+    async fn from_lines<Lines, Line>(lines: Lines) -> Option<Self>
     where
-        Lines: IntoIterator<Item = Line>,
+        Lines: ::futures::Stream<Item = Line> + ::core::marker::Send,
         Line: AsRef<str>,
         Self: Sized,        
     {
+        use ::futures::StreamExt as _;
+
         static PLAYLIST_VIDEOS_REGEX: ::once_cell::sync::Lazy<::regex::Regex> = regex!(
             r"\[playlist-started:url\];(?P<url>[^;]+)"
         );
@@ -795,7 +832,9 @@ impl FromYtdlpLines for PlaylistDownloadStartedEventPayload {
 
         let mut videos = Vec::new();
 
-        for line in lines {
+        ::futures::pin_mut!(lines);
+
+        while let Some(line) = lines.next().await {
             if let Some(captures) = PLAYLIST_VIDEOS_REGEX.captures(line.as_ref()) {
                 videos.push(UnresolvedVideo {
                     url: YtdlpParser::parse_attr(&captures["url"])?,

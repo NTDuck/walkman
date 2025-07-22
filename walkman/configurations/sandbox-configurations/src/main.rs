@@ -1,8 +1,25 @@
-use sandbox_infrastructures::domain::{self, Accept as _, Diagnostic, Request};
+use std::sync::Arc;
+use tokio::task;
 
-fn main() {
-    let actor = domain::new_actor();
-    actor.accept(Request("Hello".into())); // ✅ OK
+struct Worker;
 
-    actor.accept(Diagnostic("Nope".into())); // ❌ Won't compile: `Diagnostic` is public, but `impl Accept<Diagnostic>` is not visible
+impl Worker {
+    async fn do_background(self: Arc<Self>) {
+        for i in 0..3 {
+            let this = Arc::clone(&self); // ✅ cheap, cloneable, 'static
+            task::spawn(async move {
+                this.do_work(i).await;
+            });
+        }
+    }
+
+    async fn do_work(&self, id: usize) {
+        println!("Worker {} doing work", id);
+    }
+}
+
+#[tokio::main]
+async fn main() {
+    let worker = Arc::new(Worker);
+    worker.do_background().await;
 }
