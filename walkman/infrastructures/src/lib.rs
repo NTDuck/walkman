@@ -58,6 +58,8 @@ impl DownloadVideoView {
 #[async_trait]
 impl Update<VideoDownloadEvent> for DownloadVideoView {
     async fn update(self: ::std::sync::Arc<Self>, event: &VideoDownloadEvent) -> Fallible<()> {
+        println!("OB: Video event: {:?}", event);
+
         match event.payload {
             VideoDownloadEventPayload::Started(_) => self.update(event).await,
             VideoDownloadEventPayload::ProgressUpdated(_) => self.update(event).await,
@@ -108,6 +110,8 @@ impl Update<Event<VideoDownloadCompletedEventPayload>> for DownloadVideoView {
 #[async_trait]
 impl Update<DiagnosticEvent> for DownloadVideoView {
     async fn update(self: ::std::sync::Arc<Self>, event: &DiagnosticEvent) -> Fallible<()> {
+        println!("OB: Diagnostic event: {:?}", event);
+
         use ::colored::Colorize as _;
 
         static DECOY_PROGRESS_BAR_STYLE: ::once_cell::sync::Lazy<::indicatif::ProgressStyle> = progress_style!("{msg}");
@@ -239,7 +243,6 @@ impl Update<DiagnosticEvent> for DownloadPlaylistView {
 }
 
 #[derive(new)]
-#[derive(Debug, Clone)]
 pub struct YtdlpDownloader<CommandExecutorImpl, IdGeneratorImpl> {
     command_executor: ::std::sync::Arc<CommandExecutorImpl>,
     id_generator: ::std::sync::Arc<IdGeneratorImpl>,
@@ -259,7 +262,6 @@ trait IdGenerator: Send + Sync {
     fn generate(self: ::std::sync::Arc<Self>) -> MaybeOwnedString;
 }
 
-#[derive(Debug, Clone, Copy)]
 pub struct YtdlpConfigurations {
     pub workers: usize,
 }
@@ -294,9 +296,9 @@ where
             "--color", "no_color",
             "--force-overwrites",
             "--progress",
-            "--print", "before_dl:[video-started]%(id)s;%(title)s;%(album)s;%(artist)s;%(genre)s",
+            "--print", "before_dl:[video-started]%(webpage_url)s;%(id)s;%(title)s;%(album)s;%(artist)s;%(genre)s",
             "--progress-template", "[video-downloading]%(progress._percent_str)s;%(progress._eta_str)s;%(progress._total_bytes_str)s;%(progress._speed_str)s",
-            "--print", "after_move:[video-completed]%(filepath)s;%(id)s;%(title)s;%(album)s;%(artist)s;%(genre)s",
+            "--print", "after_move:[video-completed]%(webpage_url)s;%(id)s;%(title)s;%(album)s;%(artist)s;%(genre)s;%(filepath)s",
         ])?;
 
         let worker_id = ::std::sync::Arc::clone(&self.id_generator).generate();
@@ -314,7 +316,7 @@ where
                         },
                         payload,
                     }))
-                    .try_for_each(|event| async { video_download_events_tx.send(event) })
+                    .try_for_each(|event| async { println!("DL: Video event: {:?}", event); video_download_events_tx.send(event) })
                     .await
                     .map_err(::anyhow::Error::from)
             },
@@ -519,6 +521,7 @@ where
     }
 }
 
+#[derive(new)]
 pub struct TokioCommandExecutor;
 
 impl CommandExecutor for TokioCommandExecutor {
@@ -571,6 +574,7 @@ impl CommandExecutor for TokioCommandExecutor {
     }
 }
 
+#[derive(new)]
 pub struct UuidGenerator;
 
 impl IdGenerator for UuidGenerator {

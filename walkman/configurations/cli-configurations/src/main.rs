@@ -2,27 +2,27 @@ pub(crate) mod utils;
 
 use ::infrastructures::DownloadVideoView;
 use ::infrastructures::Id3PlaylistAsAlbumMetadataWriter;
+use infrastructures::TokioCommandExecutor;
+use infrastructures::UuidGenerator;
 use ::infrastructures::YtdlpDownloader;
 use ::infrastructures::YtdlpConfigurations;
 use ::use_cases::boundaries::DownloadPlaylistRequestModel;
 use ::use_cases::boundaries::DownloadVideoRequestModel;
-use ::use_cases::interactors::DownloadPlaylistInteractor;
 use ::use_cases::interactors::DownloadVideoInteractor;
 
 use crate::utils::aliases::Fallible;
 
 #[tokio::main]
 async fn main() -> Fallible<()> {
-    let download_video_view = std::sync::Arc::new(DownloadVideoView::new()?);
-    let downloader = std::sync::Arc::new(YtdlpDownloader::new(YtdlpConfigurations {
-        workers: 4,
-    }));
-    let metadata_writer = std::sync::Arc::new(Id3PlaylistAsAlbumMetadataWriter::new());
+    let download_video_view = ::std::sync::Arc::new(DownloadVideoView::new()?);
+    let downloader = ::std::sync::Arc::new(YtdlpDownloader::new(
+        ::std::sync::Arc::new(TokioCommandExecutor::new()),
+        ::std::sync::Arc::new(UuidGenerator::new()),
+        YtdlpConfigurations { workers: 4 },
+    ));
+    let metadata_writer = ::std::sync::Arc::new(Id3PlaylistAsAlbumMetadataWriter::new());
 
-    let download_video_interactor =
-        DownloadVideoInteractor::new(download_video_view.clone(), downloader.clone(), metadata_writer.clone());
-    // let download_playlist_interactor =
-    //     DownloadPlaylistInteractor::new(output_boundary, downloader.clone(), metadata_writer.clone());
+    let download_video_interactor = ::std::sync::Arc::new(DownloadVideoInteractor::new(download_video_view.clone(), downloader.clone(), metadata_writer.clone()));
 
     let command = ::clap::Command::new("walkman")
         .subcommand_required(true)

@@ -1,11 +1,13 @@
 pub mod events {
     use crate::{models::descriptors::{PartiallyResolvedPlaylist, PartiallyResolvedVideo, ResolvedPlaylist, ResolvedVideo}, utils::aliases::MaybeOwnedString};
 
+    #[derive(Debug, Clone)]
     pub struct Event<Payload> {
         pub metadata: EventMetadata,
         pub payload: Payload,
     }
 
+    #[derive(Debug, Clone)]
     pub struct EventMetadata {
         pub worker_id: MaybeOwnedString,
         pub correlation_id: MaybeOwnedString,
@@ -14,16 +16,19 @@ pub mod events {
 
     pub type VideoDownloadEvent = Event<VideoDownloadEventPayload>;
 
+    #[derive(Debug, Clone)]
     pub enum VideoDownloadEventPayload {
         Started(VideoDownloadStartedEventPayload),
         ProgressUpdated(VideoDownloadProgressUpdatedEventPayload),
         Completed(VideoDownloadCompletedEventPayload),
     }
 
+    #[derive(Debug, Clone)]
     pub struct VideoDownloadStartedEventPayload {
         pub video: PartiallyResolvedVideo,
     }
 
+    #[derive(Debug, Clone)]
     pub struct VideoDownloadProgressUpdatedEventPayload {
         pub percentage: u8,
 
@@ -32,22 +37,26 @@ pub mod events {
         pub speed: MaybeOwnedString,
     }
 
+    #[derive(Debug, Clone)]
     pub struct VideoDownloadCompletedEventPayload {
         pub video: ResolvedVideo,
     }
 
     pub type PlaylistDownloadEvent = Event<PlaylistDownloadEventPayload>;
 
+    #[derive(Debug, Clone)]
     pub enum PlaylistDownloadEventPayload {
         Started(PlaylistDownloadStartedEventPayload),
         ProgressUpdated(PlaylistDownloadProgressUpdatedEventPayload),
         Completed(PlaylistDownloadCompletedEventPayload),
     }
 
+    #[derive(Debug, Clone)]
     pub struct PlaylistDownloadStartedEventPayload {
         pub playlist: PartiallyResolvedPlaylist,
     }
 
+    #[derive(Debug, Clone)]
     pub struct PlaylistDownloadProgressUpdatedEventPayload {
         pub video: ResolvedVideo,
 
@@ -55,17 +64,20 @@ pub mod events {
         pub total: usize,
     }
 
+    #[derive(Debug, Clone)]
     pub struct PlaylistDownloadCompletedEventPayload {
         pub playlist: ResolvedPlaylist,
     }
 
     pub type DiagnosticEvent = Event<DiagnosticEventPayload>;
 
+    #[derive(Debug, Clone)]
     pub struct DiagnosticEventPayload {
         pub level: DiagnosticLevel,
         pub message: MaybeOwnedString,
     }
 
+    #[derive(Debug, Clone)]
     pub enum DiagnosticLevel {
         Warning,
         Error,

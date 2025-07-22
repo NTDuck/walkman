@@ -28,6 +28,7 @@ pub struct DownloadVideoInteractor {
 impl Accept<DownloadVideoRequestModel> for DownloadVideoInteractor {
     async fn accept(self: ::std::sync::Arc<Self>, request: DownloadVideoRequestModel) -> Fallible<()> {
         let DownloadVideoRequestModel { url, directory } = request;
+
         let (video_download_events, diagnostic_events) = ::std::sync::Arc::clone(&self.downloader).download_video(url, directory).await?;
 
         ::tokio::try_join!(
@@ -43,12 +44,14 @@ impl Accept<DownloadVideoRequestModel> for DownloadVideoInteractor {
 impl Accept<BoxedStream<VideoDownloadEvent>> for DownloadVideoInteractor {
     async fn accept(self: ::std::sync::Arc<Self>, events: BoxedStream<VideoDownloadEvent>) -> Fallible<()> {
         use ::futures::StreamExt as _;
-        
+
         ::futures::pin_mut!(events);
 
         while let Some(event) = events.next().await {
+            println!("Video event: {:?}", event);
+            
             ::std::sync::Arc::clone(&self.output_boundary).update(&event).await?;
-
+            
             if let VideoDownloadEventPayload::Completed(payload) = event.payload {
                 ::std::sync::Arc::clone(&self.metadata_writer).write_video(&payload.video).await?;
             }
