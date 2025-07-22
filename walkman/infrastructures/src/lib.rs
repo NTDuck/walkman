@@ -4,7 +4,6 @@ use ::async_trait::async_trait;
 use ::derive_new::new;
 use domain::PlaylistMetadata;
 use domain::VideoMetadata;
-use futures::FutureExt;
 use ::use_cases::boundaries::Update;
 use ::use_cases::gateways::Downloader;
 use ::use_cases::gateways::MetadataWriter;
@@ -283,7 +282,7 @@ where
         #[rustfmt::skip]
         let (stdout, stderr) = ::std::sync::Arc::clone(&self.command_executor).execute("yt-dlp", [
             &*url,
-            "--paths", &directory.to_string_lossy(),
+            "--paths", &directory.to_str().some()?,
             "--format", "bestaudio",
             "--extract-audio",
             "--audio-format", "mp3",
@@ -346,13 +345,16 @@ where
     async fn download_playlist(
         self: ::std::sync::Arc<Self>, url: MaybeOwnedString, directory: MaybeOwnedPath,
     ) -> Fallible<(BoxedStream<PlaylistDownloadEvent>, BoxedStream<VideoDownloadEvent>, BoxedStream<DiagnosticEvent>)> {
+        use ::futures::StreamExt as _;
+        use ::futures::TryStreamExt as _;
+
         let (playlist_download_events_tx, playlist_download_events_rx) = ::tokio::sync::mpsc::unbounded_channel();
         let (video_download_events_tx, video_download_events_rx) = ::tokio::sync::mpsc::unbounded_channel();
         let (diagnostic_events_tx, diagnostic_events_rx) = ::tokio::sync::mpsc::unbounded_channel();
 
         let (stdout, stderr) = ::std::sync::Arc::clone(&self.command_executor).execute("yt-dlp", [
-            &*url.clone(),
-            "--paths", &directory.to_str().unwrap(),
+            &*url,
+            "--paths", &directory.to_str().some()?,
             "--quiet",
             "--flat-playlist",
             "--color", "no_color",
@@ -360,39 +362,11 @@ where
             "--print", "video:[playlist-started:url]%(url)s"
         ])?;
 
+        let worker_id = ::std::sync::Arc::clone(&self.id_generator).generate();
         let correlation_id = ::std::sync::Arc::clone(&self.id_generator).generate();
 
-        ::tokio::task::spawn({
-            let diagnostic_events_tx = diagnostic_events_tx.clone();
-
-            let worker_id = ::std::sync::Arc::clone(&self.id_generator).generate();
-            let correlation_id = correlation_id.clone();
-
-            async move {
-                use ::futures::StreamExt as _;
-
-                stderr
-                    .filter_map(|line| async { DiagnosticEventPayload::from_line(line) })
-                    .map(|payload| Event {
-                        metadata: EventMetadata {
-                            worker_id: worker_id.clone(),
-                            correlation_id: correlation_id.clone(),
-                            timestamp: ::std::time::SystemTime::now(),
-                        },
-                        payload,
-                    })
-                    .for_each(|event| async { diagnostic_events_tx.send(event).unwrap() })
-                    .await;
-            }
-        });
-
-        let playlist = ::tokio::spawn({
-            let playlist_download_events_tx = playlist_download_events_tx.clone();
-
-            let worker_id = ::std::sync::Arc::clone(&self.id_generator).generate();
-            let correlation_id = correlation_id.clone();
-
-            async move {
+        let (playlist, _) = ::tokio::try_join!(
+            async {
                 let payload = PlaylistDownloadStartedEventPayload::from_lines(stdout).await.some()?;
                 let playlist = payload.playlist.clone();
 
@@ -407,9 +381,25 @@ where
 
                 playlist_download_events_tx.send(event)?;
 
-                Ok::<_, ::anyhow::Error>(playlist)
-            }
-        }).await??;
+                Ok(playlist)
+            },
+
+            async {
+                stderr
+                    .filter_map(|line| async { DiagnosticEventPayload::from_line(line) })
+                    .map(|payload| Ok(Event {
+                        metadata: EventMetadata {
+                            worker_id: worker_id.clone(),
+                            correlation_id: correlation_id.clone(),
+                            timestamp: std::time::SystemTime::now(),
+                        },
+                        payload,
+                    }))
+                    .try_for_each(|event| async { diagnostic_events_tx.send(event) })
+                    .await
+                    .map_err(::anyhow::Error::from)
+            },
+        )?;
 
         let completed = ::std::sync::Arc::new(::std::sync::atomic::AtomicUsize::new(0));
         let total = playlist.videos.len();
@@ -521,8 +511,6 @@ where
             },
             payload: PlaylistDownloadEventPayload::Completed(PlaylistDownloadCompletedEventPayload { playlist }),
         };
-
-
 
         Ok((
             ::std::boxed::Box::pin(::tokio_stream::wrappers::UnboundedReceiverStream::new(playlist_download_events_rx)),
