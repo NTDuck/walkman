@@ -14,6 +14,21 @@ pub mod events {
         pub timestamp: ::std::time::SystemTime,
     }
 
+    #[derive(Debug, Clone)]
+    pub struct EventRef<'this, Payload> {
+        pub metadata: &'this EventMetadata,
+        pub payload: &'this Payload,
+    }
+    
+    impl<Payload> Event<Payload> {
+        pub fn with_payload<'this, OtherPayload>(&'this self, payload: &'this OtherPayload) -> EventRef<'this, OtherPayload> {
+            EventRef {
+                metadata: &self.metadata,
+                payload,
+            }
+        }
+    }
+
     pub type VideoDownloadEvent = Event<VideoDownloadEventPayload>;
 
     #[derive(Debug, Clone)]

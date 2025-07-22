@@ -2,31 +2,32 @@ pub(crate) mod utils;
 
 use ::async_trait::async_trait;
 use ::derive_new::new;
-use domain::PlaylistMetadata;
-use domain::VideoMetadata;
+use ::domain::PlaylistMetadata;
+use ::domain::VideoMetadata;
 use ::use_cases::boundaries::Update;
 use ::use_cases::gateways::Downloader;
 use ::use_cases::gateways::MetadataWriter;
-use use_cases::models::descriptors::PartiallyResolvedPlaylist;
-use use_cases::models::descriptors::PartiallyResolvedVideo;
-use use_cases::models::descriptors::ResolvedPlaylist;
-use use_cases::models::descriptors::ResolvedVideo;
-use use_cases::models::descriptors::UnresolvedVideo;
-use use_cases::models::events::DiagnosticEvent;
-use use_cases::models::events::DiagnosticEventPayload;
-use use_cases::models::events::DiagnosticLevel;
-use use_cases::models::events::Event;
-use use_cases::models::events::EventMetadata;
-use use_cases::models::events::PlaylistDownloadCompletedEventPayload;
-use use_cases::models::events::PlaylistDownloadEvent;
-use use_cases::models::events::PlaylistDownloadEventPayload;
-use use_cases::models::events::PlaylistDownloadProgressUpdatedEventPayload;
-use use_cases::models::events::PlaylistDownloadStartedEventPayload;
-use use_cases::models::events::VideoDownloadCompletedEventPayload;
-use use_cases::models::events::VideoDownloadEvent;
-use use_cases::models::events::VideoDownloadEventPayload;
-use use_cases::models::events::VideoDownloadProgressUpdatedEventPayload;
-use use_cases::models::events::VideoDownloadStartedEventPayload;
+use ::use_cases::models::descriptors::PartiallyResolvedPlaylist;
+use ::use_cases::models::descriptors::PartiallyResolvedVideo;
+use ::use_cases::models::descriptors::ResolvedPlaylist;
+use ::use_cases::models::descriptors::ResolvedVideo;
+use ::use_cases::models::descriptors::UnresolvedVideo;
+use ::use_cases::models::events::DiagnosticEvent;
+use ::use_cases::models::events::DiagnosticEventPayload;
+use ::use_cases::models::events::DiagnosticLevel;
+use ::use_cases::models::events::Event;
+use ::use_cases::models::events::EventMetadata;
+use use_cases::models::events::EventRef;
+use ::use_cases::models::events::PlaylistDownloadCompletedEventPayload;
+use ::use_cases::models::events::PlaylistDownloadEvent;
+use ::use_cases::models::events::PlaylistDownloadEventPayload;
+use ::use_cases::models::events::PlaylistDownloadProgressUpdatedEventPayload;
+use ::use_cases::models::events::PlaylistDownloadStartedEventPayload;
+use ::use_cases::models::events::VideoDownloadCompletedEventPayload;
+use ::use_cases::models::events::VideoDownloadEvent;
+use ::use_cases::models::events::VideoDownloadEventPayload;
+use ::use_cases::models::events::VideoDownloadProgressUpdatedEventPayload;
+use ::use_cases::models::events::VideoDownloadStartedEventPayload;
 
 use crate::utils::aliases::BoxedStream;
 use crate::utils::aliases::Fallible;
@@ -58,22 +59,20 @@ impl DownloadVideoView {
 #[async_trait]
 impl Update<VideoDownloadEvent> for DownloadVideoView {
     async fn update(self: ::std::sync::Arc<Self>, event: &VideoDownloadEvent) -> Fallible<()> {
-        println!("OB: Video event: {:?}", event);
-
-        match event.payload {
-            VideoDownloadEventPayload::Started(_) => self.update(event).await,
-            VideoDownloadEventPayload::ProgressUpdated(_) => self.update(event).await,
-            VideoDownloadEventPayload::Completed(_) => self.update(event).await,
+        match &event.payload {
+            VideoDownloadEventPayload::Started(payload) => self.update(&event.with_payload(payload)).await,
+            VideoDownloadEventPayload::ProgressUpdated(payload) => self.update(&event.with_payload(payload)).await,
+            VideoDownloadEventPayload::Completed(payload) => self.update(&event.with_payload(payload)).await,
         }
     }
 }
 
 #[async_trait]
-impl Update<Event<VideoDownloadStartedEventPayload>> for DownloadVideoView {
-    async fn update(self: ::std::sync::Arc<Self>, event: &Event<VideoDownloadStartedEventPayload>) -> Fallible<()> {
+impl<'event> Update<EventRef<'event, VideoDownloadStartedEventPayload>> for DownloadVideoView {
+    async fn update(self: ::std::sync::Arc<Self>, event: &EventRef<'event, VideoDownloadStartedEventPayload>) -> Fallible<()> {
         use ::colored::Colorize as _;
 
-        let VideoDownloadStartedEventPayload { video } = &event.payload;
+        let VideoDownloadStartedEventPayload { video } = event.payload;
 
         self.video_progress_bar
             .println(format!("Downloading video: {}", video.metadata.title.white().bold()));
@@ -83,9 +82,9 @@ impl Update<Event<VideoDownloadStartedEventPayload>> for DownloadVideoView {
 }
 
 #[async_trait]
-impl Update<Event<VideoDownloadProgressUpdatedEventPayload>> for DownloadVideoView {
-    async fn update(self: ::std::sync::Arc<Self>, event: &Event<VideoDownloadProgressUpdatedEventPayload>) -> Fallible<()> {
-        let VideoDownloadProgressUpdatedEventPayload { percentage, size, speed, eta } = &event.payload;
+impl<'event> Update<EventRef<'event, VideoDownloadProgressUpdatedEventPayload>> for DownloadVideoView {
+    async fn update(self: ::std::sync::Arc<Self>, event: &EventRef<'event, VideoDownloadProgressUpdatedEventPayload>) -> Fallible<()> {
+        let VideoDownloadProgressUpdatedEventPayload { percentage, size, speed, eta } = event.payload;
 
         self.video_progress_bar.set_position(*percentage as u64);
         self.video_progress_bar.set_prefix(format!("{:<21} {:4}", format!("{} @ {}", size, speed), eta));
@@ -96,11 +95,16 @@ impl Update<Event<VideoDownloadProgressUpdatedEventPayload>> for DownloadVideoVi
 }
 
 #[async_trait]
-impl Update<Event<VideoDownloadCompletedEventPayload>> for DownloadVideoView {
-    async fn update(self: ::std::sync::Arc<Self>, _: &Event<VideoDownloadCompletedEventPayload>) -> Fallible<()> {
+impl<'event> Update<EventRef<'event, VideoDownloadCompletedEventPayload>> for DownloadVideoView {
+    async fn update(self: ::std::sync::Arc<Self>, _: &EventRef<'event, VideoDownloadCompletedEventPayload>) -> Fallible<()> {
+        use ::colored::Colorize as _;
+
         static PROGRESS_BAR_FINISH_STYLE: ::once_cell::sync::Lazy<::indicatif::ProgressStyle> = progress_style!("{prefix} {bar:50.green} {msg}");
         
         self.video_progress_bar.set_style(PROGRESS_BAR_FINISH_STYLE.clone());
+        self.video_progress_bar.set_prefix(self.video_progress_bar.prefix().green().to_string());
+        self.video_progress_bar.set_message(self.video_progress_bar.message().green().to_string());
+
         self.video_progress_bar.finish();
 
         Ok(())
@@ -110,8 +114,6 @@ impl Update<Event<VideoDownloadCompletedEventPayload>> for DownloadVideoView {
 #[async_trait]
 impl Update<DiagnosticEvent> for DownloadVideoView {
     async fn update(self: ::std::sync::Arc<Self>, event: &DiagnosticEvent) -> Fallible<()> {
-        println!("OB: Diagnostic event: {:?}", event);
-
         use ::colored::Colorize as _;
 
         static DECOY_PROGRESS_BAR_STYLE: ::once_cell::sync::Lazy<::indicatif::ProgressStyle> = progress_style!("{msg}");
@@ -301,42 +303,47 @@ where
             "--print", "after_move:[video-completed]%(webpage_url)s;%(id)s;%(title)s;%(album)s;%(artist)s;%(genre)s;%(filepath)s",
         ])?;
 
-        let worker_id = ::std::sync::Arc::clone(&self.id_generator).generate();
         let correlation_id = ::std::sync::Arc::clone(&self.id_generator).generate();
 
-        ::tokio::try_join!(
-            async {
-                stdout
-                    .filter_map(|line| async { VideoDownloadEventPayload::from_line(line) })
-                    .map(|payload| Ok(Event {
-                        metadata: EventMetadata {
-                            worker_id: worker_id.clone(),
-                            correlation_id: correlation_id.clone(),
-                            timestamp: std::time::SystemTime::now(),
-                        },
-                        payload,
-                    }))
-                    .try_for_each(|event| async { println!("DL: Video event: {:?}", event); video_download_events_tx.send(event) })
-                    .await
-                    .map_err(::anyhow::Error::from)
-            },
-            
-            async {
-                stderr
-                    .filter_map(|line| async { DiagnosticEventPayload::from_line(line) })
-                    .map(|payload| Ok(Event {
-                        metadata: EventMetadata {
-                            worker_id: worker_id.clone(),
-                            correlation_id: correlation_id.clone(),
-                            timestamp: std::time::SystemTime::now(),
-                        },
-                        payload,
-                    }))
-                    .try_for_each(|event| async { diagnostic_events_tx.send(event) })
-                    .await
-                    .map_err(::anyhow::Error::from)
-            },
-        )?;
+        ::tokio::spawn({
+            let worker_id = ::std::sync::Arc::clone(&self.id_generator).generate();
+
+            async move {
+                ::tokio::try_join!(
+                    async {
+                        stdout
+                            .filter_map(|line| async { VideoDownloadEventPayload::from_line(line) })
+                            .map(|payload| Ok(Event {
+                                metadata: EventMetadata {
+                                    worker_id: worker_id.clone(),
+                                    correlation_id: correlation_id.clone(),
+                                    timestamp: std::time::SystemTime::now(),
+                                },
+                                payload,
+                            }))
+                            .try_for_each(|event| async { video_download_events_tx.send(event) })
+                            .await
+                            .map_err(::anyhow::Error::from)
+                    },
+                    
+                    async {
+                        stderr
+                            .filter_map(|line| async { DiagnosticEventPayload::from_line(line) })
+                            .map(|payload| Ok(Event {
+                                metadata: EventMetadata {
+                                    worker_id: worker_id.clone(),
+                                    correlation_id: correlation_id.clone(),
+                                    timestamp: std::time::SystemTime::now(),
+                                },
+                                payload,
+                            }))
+                            .try_for_each(|event| async { diagnostic_events_tx.send(event) })
+                            .await
+                            .map_err(::anyhow::Error::from)
+                    },
+                )
+            }
+        });
 
         Ok((
             ::std::boxed::Box::pin(::tokio_stream::wrappers::UnboundedReceiverStream::new(video_download_events_rx)),

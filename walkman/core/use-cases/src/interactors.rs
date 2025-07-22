@@ -48,8 +48,6 @@ impl Accept<BoxedStream<VideoDownloadEvent>> for DownloadVideoInteractor {
         ::futures::pin_mut!(events);
 
         while let Some(event) = events.next().await {
-            println!("Video event: {:?}", event);
-            
             ::std::sync::Arc::clone(&self.output_boundary).update(&event).await?;
             
             if let VideoDownloadEventPayload::Completed(payload) = event.payload {
