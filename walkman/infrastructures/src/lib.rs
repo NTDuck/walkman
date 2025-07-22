@@ -49,6 +49,8 @@ impl DownloadVideoView {
         let video_progress_bar = progress_bars.add(::indicatif::ProgressBar::new(100)
             .with_style(PROGRESS_BAR_STYLE.clone()));
 
+        video_progress_bar.disable_steady_tick();
+
         video_progress_bar.set_prefix(format!("{:<21} {:4}", format!("{} @ {}", "??MiB", "??MiB/s"), "??:??"));
         video_progress_bar.set_message("??%");
 
