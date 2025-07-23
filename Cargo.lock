@@ -769,6 +769,7 @@ dependencies = [
  "futures-core",
  "futures-util",
  "indicatif",
+ "once_cell",
  "regex",
  "sandbox-infrastructures",
  "tokio",

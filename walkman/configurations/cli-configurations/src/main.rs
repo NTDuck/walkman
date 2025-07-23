@@ -1,13 +1,16 @@
 pub(crate) mod utils;
 
+use infrastructures::DownloadPlaylistView;
 use ::infrastructures::DownloadVideoView;
 use ::infrastructures::Id3PlaylistAsAlbumMetadataWriter;
 use infrastructures::TokioCommandExecutor;
 use infrastructures::UuidGenerator;
 use ::infrastructures::YtdlpDownloader;
 use ::infrastructures::YtdlpConfigurations;
+use use_cases::boundaries::Accept;
 use ::use_cases::boundaries::DownloadPlaylistRequestModel;
 use ::use_cases::boundaries::DownloadVideoRequestModel;
+use use_cases::interactors::DownloadPlaylistInteractor;
 use ::use_cases::interactors::DownloadVideoInteractor;
 
 use crate::utils::aliases::Fallible;
@@ -15,14 +18,17 @@ use crate::utils::aliases::Fallible;
 #[tokio::main]
 async fn main() -> Fallible<()> {
     let download_video_view = ::std::sync::Arc::new(DownloadVideoView::new()?);
+    let download_playlist_view = ::std::sync::Arc::new(DownloadPlaylistView::new()?);
+
     let downloader = ::std::sync::Arc::new(YtdlpDownloader::new(
         ::std::sync::Arc::new(TokioCommandExecutor::new()),
         ::std::sync::Arc::new(UuidGenerator::new()),
-        YtdlpConfigurations { workers: 4 },
+        YtdlpConfigurations { workers: 4, cooldown: ::std::time::Duration::from_millis(1000) },
     ));
     let metadata_writer = ::std::sync::Arc::new(Id3PlaylistAsAlbumMetadataWriter::new());
 
     let download_video_interactor = ::std::sync::Arc::new(DownloadVideoInteractor::new(download_video_view.clone(), downloader.clone(), metadata_writer.clone()));
+    let download_playlist_interactor = ::std::sync::Arc::new(DownloadPlaylistInteractor::new(download_playlist_view.clone(), downloader.clone(), metadata_writer.clone()));
 
     let command = ::clap::Command::new("walkman")
         .subcommand_required(true)
@@ -87,12 +93,12 @@ async fn main() -> Fallible<()> {
                 .get_one::<::std::path::PathBuf>("directory")
                 .expect("Error: Missing required argument `directory`");
 
-            let _request = DownloadPlaylistRequestModel {
+            let request = DownloadPlaylistRequestModel {
                 url: url.to_owned().into(),
                 directory: directory.to_owned().into(),
             };
 
-            todo!()
+            download_playlist_interactor.accept(request).await?;
         },
 
         _ => unreachable!(),

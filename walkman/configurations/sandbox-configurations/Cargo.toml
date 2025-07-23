@@ -9,6 +9,7 @@ publish.workspace = true
 [dependencies]
 sandbox-infrastructures = { path = "../sandbox-infrastructures" }
 
+once_cell = "*"
 indicatif = "*"
 async-stream = "*"
 futures-core = "*"
