@@ -130,7 +130,7 @@ pub mod descriptors {
 
         pub id: PlaylistId,
         pub metadata: PlaylistMetadata,
-        pub videos: Vec<UnresolvedVideo>,
+        pub videos: Option<Vec<UnresolvedVideo>>,
     }
 
     pub type ResolvedPlaylist = ::domain::Playlist;
@@ -146,8 +146,8 @@ pub mod descriptors {
 
         pub id: ChannelId,
         pub metadata: ChannelMetadata,
-        pub videos: Vec<UnresolvedVideo>,
-        pub playlists: Vec<UnresolvedPlaylist>,
+        pub playlists: Option<Vec<UnresolvedPlaylist>>,
+        pub videos: Option<Vec<UnresolvedVideo>>,
     }
 
     pub type ResolvedChannel = ::domain::Channel;

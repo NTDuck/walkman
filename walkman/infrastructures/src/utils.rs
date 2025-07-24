@@ -38,6 +38,20 @@ pub mod macros {
     }
 
     #[macro_export]
+    macro_rules! event {
+        ($payload:expr) => {
+            ::use_cases::models::events::Event {
+                metadata: ::use_cases::models::events::EventMetadata {
+                    worker_id: worker_id.clone(),
+                    correlation_id: correlation_id.clone(),
+                    timestamp: ::std::time::SystemTime::now(),
+                },
+                payload: $payload,
+            }
+        };
+    }
+
+    #[macro_export]
     macro_rules! regex {
         ($pattern:expr) => {
             ::once_cell::sync::Lazy::new(|| ::regex::Regex::new($pattern).unwrap())

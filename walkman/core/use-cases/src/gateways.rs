@@ -19,18 +19,5 @@ pub trait Downloader: Send + Sync {
 #[async_trait]
 pub trait MetadataWriter: Send + Sync {
     async fn write_video(self: ::std::sync::Arc<Self>, video: &ResolvedVideo) -> Fallible<()>;
-
-    async fn write_playlist(self: ::std::sync::Arc<Self>, playlist: &ResolvedPlaylist) -> Fallible<()> {
-        use ::futures::StreamExt as _;
-
-        let mut futures = playlist.videos
-            .iter()
-            .map(|video| ::std::sync::Arc::clone(&self).write_video(video))
-            .collect::<::futures::stream::FuturesUnordered<_>>();
-
-        // https://users.rust-lang.org/t/awaiting-futuresunordered/49295
-        while (futures.next().await).is_some() {}
-
-        Ok(())
-    }
+    async fn write_playlist(self: ::std::sync::Arc<Self>, playlist: &ResolvedPlaylist) -> Fallible<()>;
 }

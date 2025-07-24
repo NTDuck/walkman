@@ -4,6 +4,7 @@ use ::async_trait::async_trait;
 use ::derive_new::new;
 use ::domain::PlaylistMetadata;
 use ::domain::VideoMetadata;
+use rayon::iter::IntoParallelIterator;
 use use_cases::boundaries::Activate;
 use ::use_cases::boundaries::Update;
 use ::use_cases::gateways::Downloader;
@@ -195,7 +196,7 @@ impl Activate for DownloadPlaylistView {
 
     async fn deactivate(self: ::std::sync::Arc<Self>) -> Fallible<()> {
         self.progress_bars.set_draw_target(::indicatif::ProgressDrawTarget::hidden());
-        
+
         Ok(())
     }
 }
@@ -300,7 +301,7 @@ impl<'event> Update<EventRef<'event, VideoDownloadStartedEventPayload>> for Down
         
         video_progress_bar.set_position(0);
         video_progress_bar.set_prefix(format!("{:<21} {:4}", format!("{} @ {}", "??MiB", "??MiB/s"), "??:??"));
-        video_progress_bar.set_message(format!("{:>3}%  {}", "??", event.payload.video.metadata.title));
+        video_progress_bar.set_message(format!("{:>3}%  {}", "??", event.payload.video.metadata.title.unwrap_or_else("N/A".into())));
 
         Ok(())
     }
@@ -443,15 +444,19 @@ where
                     async {
                         stdout
                             .filter_map(|line| async { VideoDownloadEventPayload::from_line(line) })
-                            .map(|payload| Ok(Event {
+                            .map(|payload| Event {
                                 metadata: EventMetadata {
                                     worker_id: worker_id.clone(),
                                     correlation_id: correlation_id.clone(),
                                     timestamp: std::time::SystemTime::now(),
                                 },
                                 payload,
-                            }))
-                            .try_for_each(|event| async { video_download_events_tx.send(event) })
+                            })
+                            .map(Ok)
+                            .try_for_each(|event| async {
+                                println!("DL: event `{:?}` from worker `{}`", event, worker_id);
+                                video_download_events_tx.send(event)
+                            })
                             .await
                             .map_err(::anyhow::Error::from)
                     },
@@ -459,14 +464,15 @@ where
                     async {
                         stderr
                             .filter_map(|line| async { DiagnosticEventPayload::from_line(line) })
-                            .map(|payload| Ok(Event {
+                            .map(|payload| Event {
                                 metadata: EventMetadata {
                                     worker_id: worker_id.clone(),
                                     correlation_id: correlation_id.clone(),
                                     timestamp: std::time::SystemTime::now(),
                                 },
                                 payload,
-                            }))
+                            })
+                            .map(Ok)
                             .try_for_each(|event| async { diagnostic_events_tx.send(event) })
                             .await
                             .map_err(::anyhow::Error::from)
@@ -503,24 +509,24 @@ where
 
         let correlation_id = ::std::sync::Arc::clone(&self.id_generator).generate();
 
-        let playlist = tokio::spawn({
-            let worker_id = std::sync::Arc::clone(&self.id_generator).generate();
+        let playlist = ::tokio::spawn({
+            let worker_id = ::std::sync::Arc::clone(&self.id_generator).generate();
             let correlation_id = correlation_id.clone();
 
             let playlist_download_events_tx = playlist_download_events_tx.clone();
             let diagnostic_events_tx = diagnostic_events_tx.clone();
 
             async move {
-                let (playlist, _) = tokio::try_join!(
+                let (playlist, _) = ::tokio::try_join!(
                     async {
-                        let payload = PlaylistDownloadStartedEventPayload::from_lines(stdout).await.ok_or_else(|| anyhow::anyhow!("No payload"))?;
+                        let payload = PlaylistDownloadStartedEventPayload::from_lines(stdout).await.some()?;
                         let playlist = payload.playlist.clone();
 
                         let event = Event {
                             metadata: EventMetadata {
                                 worker_id: worker_id.clone(),
                                 correlation_id: correlation_id.clone(),
-                                timestamp: std::time::SystemTime::now(),
+                                timestamp: ::std::time::SystemTime::now(),
                             },
                             payload: PlaylistDownloadEventPayload::Started(payload),
                         };
@@ -532,24 +538,27 @@ where
                     async {
                         stderr
                             .filter_map(|line| async { DiagnosticEventPayload::from_line(line) })
-                            .map(|payload| Ok(Event {
+                            .map(|payload| Event {
                                 metadata: EventMetadata {
                                     worker_id: worker_id.clone(),
                                     correlation_id: correlation_id.clone(),
-                                    timestamp: std::time::SystemTime::now(),
+                                    timestamp: ::std::time::SystemTime::now(),
                                 },
                                 payload,
-                            }))
+                            })
+                            .map(Ok)
                             .try_for_each(|event| async { diagnostic_events_tx.send(event) })
                             .await
-                            .map_err(anyhow::Error::from)
+                            .map_err(::anyhow::Error::from)
                     },
                 )?;
 
-                Ok::<_, anyhow::Error>(playlist)
+                Ok::<_, ::anyhow::Error>(playlist)
             }
         })
         .await??;
+
+        println!("DL: playlist: {:#?}", playlist);
 
         let completed = ::std::sync::Arc::new(::std::sync::atomic::AtomicUsize::new(0));
         let total = playlist.videos.len();
@@ -559,6 +568,8 @@ where
 
         let unresolved_videos: ::std::sync::Arc<::tokio::sync::Mutex<::std::collections::VecDeque<_>>> =
             ::std::sync::Arc::new(::tokio::sync::Mutex::new(playlist.videos.clone().into()));
+        
+        let unresolved_videos_notify = ::std::sync::Arc::new(::tokio::sync::Notify::new());
         
         (0..self.configurations.workers).for_each(|_| {
             ::tokio::spawn({
@@ -575,6 +586,7 @@ where
                 let completed = ::std::sync::Arc::clone(&completed);
                 let resolved_videos = ::std::sync::Arc::clone(&resolved_videos);
                 let unresolved_videos = ::std::sync::Arc::clone(&unresolved_videos);
+                let unresolved_videos_notify = ::std::sync::Arc::clone(&unresolved_videos_notify);
 
                 async move {
                     while let Some(video) = unresolved_videos.lock().await.pop_front() {
@@ -582,62 +594,61 @@ where
 
                         ::tokio::try_join!(
                             async {
-                                ::futures::pin_mut!(video_download_events);
+                                video_download_events
+                                    .map(Ok)
+                                    .try_for_each(|event| async {
+                                        match event.payload {
+                                            VideoDownloadEventPayload::Completed(ref payload) => {
+                                                completed.fetch_add(1, ::std::sync::atomic::Ordering::Relaxed);
+                                                resolved_videos.lock().await.push(payload.video.clone());
 
-                                while let Some(event) = video_download_events.next().await {
-                                    match event.payload {
-                                        VideoDownloadEventPayload::Completed(ref payload) => {
-                                            completed.fetch_add(1, ::std::sync::atomic::Ordering::Relaxed);
-                                            resolved_videos.lock().await.push(payload.video.clone());
-
-                                            let event = Event {
-                                                metadata: EventMetadata {
-                                                    worker_id: worker_id.clone(),
-                                                    correlation_id: correlation_id.clone(),
-                                                    timestamp: ::std::time::SystemTime::now(),
-                                                },
-                                                payload: PlaylistDownloadEventPayload::ProgressUpdated(
-                                                    PlaylistDownloadProgressUpdatedEventPayload {
-                                                        video: payload.video.clone(),
-                                                        completed: completed.load(::std::sync::atomic::Ordering::Relaxed),
-                                                        total,
+                                                let event = Event {
+                                                    metadata: EventMetadata {
+                                                        worker_id: worker_id.clone(),
+                                                        correlation_id: correlation_id.clone(),
+                                                        timestamp: ::std::time::SystemTime::now(),
                                                     },
-                                                ),
-                                            };
+                                                    payload: PlaylistDownloadEventPayload::ProgressUpdated(
+                                                        PlaylistDownloadProgressUpdatedEventPayload {
+                                                            video: payload.video.clone(),
+                                                            completed: completed.load(::std::sync::atomic::Ordering::Relaxed),
+                                                            total,
+                                                        },
+                                                    ),
+                                                };
 
-                                            playlist_download_events_tx.send(event)?;
-                                        },
-                                        _ => {},
-                                    }
+                                                playlist_download_events_tx.send(event)?;
+                                            },
+                                            _ => {},
+                                        }
 
-                                    video_download_events_tx.send(event)?;
-                                }
-
-                                Ok::<_, ::anyhow::Error>(())
+                                        video_download_events_tx.send(event)?;
+                                        Ok(())
+                                    })
+                                    .await
                             },
 
                             async {
-                                ::futures::pin_mut!(diagnostic_events);
-
-                                while let Some(event) = diagnostic_events.next().await {
-                                    let event = Event {
+                                diagnostic_events
+                                    .map(|event| Event {
                                         metadata: EventMetadata {
                                             worker_id: worker_id.clone(),
                                             correlation_id: correlation_id.clone(),
                                             timestamp: ::std::time::SystemTime::now(),
                                         },
                                         payload: event.payload,
-                                    };
-
-                                    diagnostic_events_tx.send(event)?;
-                                }
-
-                                Ok::<_, ::anyhow::Error>(())
+                                    })
+                                    .map(Ok)
+                                    .try_for_each(|event| async { diagnostic_events_tx.send(event) })
+                                    .await
+                                    .map_err(::anyhow::Error::from)
                             },
                         )?;
 
                         ::tokio::time::sleep(this.configurations.cooldown).await;
                     }
+
+                    unresolved_videos_notify.notify_one();
 
                     Ok::<_, ::anyhow::Error>(())
                 }
@@ -650,7 +661,12 @@ where
 
             let playlist_download_events_tx = playlist_download_events_tx.clone();
 
+            let unresolved_videos_notify = ::std::sync::Arc::clone(&unresolved_videos_notify);
+
             async move {
+                unresolved_videos_notify.notified().await;
+                println!("DL: unresolved videos notified done");
+
                 let playlist = ResolvedPlaylist {
                     url: playlist.url,
                     id: playlist.id,
@@ -706,8 +722,8 @@ impl CommandExecutor for TokioCommandExecutor {
             .stderr(::std::process::Stdio::piped())
             .spawn()?;
 
-        let stdout = process.stdout.take().unwrap();
-        let stderr = process.stderr.take().unwrap();
+        let stdout = process.stdout.take().some()?;
+        let stderr = process.stderr.take().some()?;
 
         ::tokio::task::spawn(async move {
             let lines = ::tokio::io::BufReader::new(stdout).lines();
@@ -758,6 +774,8 @@ impl FromYtdlpLine for VideoDownloadEventPayload {
         Line: AsRef<str>,
         Self: Sized,
     {
+        println!("{}", line.as_ref());
+
         VideoDownloadProgressUpdatedEventPayload::from_line(&line).map(Self::ProgressUpdated)
             .or(VideoDownloadStartedEventPayload::from_line(&line).map(Self::Started))
             .or(VideoDownloadCompletedEventPayload::from_line(&line).map(Self::Completed))
@@ -944,92 +962,55 @@ fn normalize(string: &str) -> &str {
 }
 
 #[derive(new)]
-pub struct GenericMetadataWriter;
-
-#[async_trait]
-impl MetadataWriter for GenericMetadataWriter {
-    async fn write_video(self: ::std::sync::Arc<Self>, video: &ResolvedVideo) -> Fallible<()> {
-        use ::lofty::file::TaggedFileExt as _;
-        use ::lofty::tag::Accessor as _;
-        use ::lofty::tag::TagExt as _;
-
-        let mut file = ::lofty::read_from_path(&video.path)?;
-
-        let tag = match file.primary_tag_mut() {
-            Some(tag) => tag,
-            None => match file.first_tag_mut() {
-                Some(tag) => tag,
-                None => {
-                    file.insert_tag(::lofty::tag::Tag::new(file.primary_tag_type()));
-                    file.primary_tag_mut().unwrap()
-                },
-            },
-        };
-
-        tag.set_title(video.metadata.title.to_owned().into());
-        tag.set_album(video.metadata.album.to_owned().into());
-        tag.set_artist(video.metadata.artists.join(", ").to_owned().into());
-        tag.set_genre(video.metadata.genres.join(", ").to_owned().into());
-
-        tag.save_to_path(&video.path, ::lofty::config::WriteOptions::default())?;
-
-        Ok(())
-    }
+pub struct Id3MetadataWriter {
+    configurations: Id3MetadataWriterConfigurations,
 }
 
-#[derive(new)]
-pub struct Id3MetadataWriter;
+pub struct Id3MetadataWriterConfigurations {
+    pub playlist_as_album: bool,
+}
 
 #[async_trait]
 impl MetadataWriter for Id3MetadataWriter {
-    async fn write_video(self: ::std::sync::Arc<Self>, video: &ResolvedVideo) -> Fallible<()> {
-        use ::id3::TagLike as _;
-
-        let mut tag = ::id3::Tag::new();
-
-        tag.set_title(&*video.metadata.title);
-        tag.set_album(&*video.metadata.album);
-        tag.set_artist(&*video.metadata.artists.join(", "));
-        tag.set_genre(&*video.metadata.genres.join(", "));
-
-        tag.write_to_path(&video.path, ::id3::Version::Id3v23)?;
-
-        Ok(())
-    }
-}
-
-#[derive(new)]
-pub struct Id3PlaylistAsAlbumMetadataWriter;
-
-#[async_trait]
-impl MetadataWriter for Id3PlaylistAsAlbumMetadataWriter {
     async fn write_video(self: ::std::sync::Arc<Self>, video: &ResolvedVideo) -> Fallible<()> {
         self.write_video(video, None)
     }
 
     async fn write_playlist(self: ::std::sync::Arc<Self>, playlist: &ResolvedPlaylist) -> Fallible<()> {
-        use ::rayon::iter::IntoParallelRefIterator as _;
         use ::rayon::iter::ParallelIterator as _;
 
         playlist.videos
-            .par_iter()
+            .as_deref()
+            .into_par_iter()
+            .flatten()
             .try_for_each(|video| ::std::sync::Arc::clone(&self).write_video(video, Some(playlist)))
     }
 }
 
-impl Id3PlaylistAsAlbumMetadataWriter {
+impl Id3MetadataWriter {
     fn write_video(self: ::std::sync::Arc<Self>, video: &ResolvedVideo, playlist: Option<&ResolvedPlaylist>) -> Fallible<()> {
         use ::id3::TagLike as _;
         
         let mut tag = ::id3::Tag::new();
 
-        tag.set_title(&*video.metadata.title);
-        tag.set_artist(&*video.metadata.artists.join(", "));
-        tag.set_genre(&*video.metadata.genres.join(", "));
+        video.metadata.title
+            .as_deref()
+            .map(|title| tag.set_title(title));
 
-        if let Some(playlist) = playlist {
-            tag.set_album(&*playlist.metadata.title);
-        }
+        video.metadata.album
+            .as_deref()
+            .or(self.configurations.playlist_as_album.then(|| {
+                playlist.and_then(|playlist| playlist.metadata.title.as_deref())
+            }).flatten())
+            .map(|album| tag.set_album(album));
+
+        video.metadata.artists
+            .as_deref()
+            .map(|artists| tag.set_artist(artists.join(", ")));
+
+        video.metadata.genres
+            .as_deref()
+            .map(|genres| tag.set_genre(genres.join(", ")));
 
         tag.write_to_path(&video.path, ::id3::Version::Id3v23)?;
 
