@@ -1,32 +1,16 @@
-use once_cell::sync::Lazy;
 use regex::Regex;
 
-static PLAYLIST_VIDEOS_REGEX: Lazy<Regex> = Lazy::new(|| {
-    Regex::new(            r"\[playlist-started:url\](?P<url>[^;]+)"
-).unwrap()
-});
+fn update_percentage(message: &str, new_percent: u8) -> String {
+    // Matches optional spaces + 1-3 digits or ??, followed by "%  "
+    static RE: once_cell::sync::Lazy<Regex> = once_cell::sync::Lazy::new(|| {
+        Regex::new(r"^\s*(\d{1,3}|\?{2})%  ").unwrap()
+    });
 
-static PLAYLIST_METADATA_REGEX: Lazy<Regex> = Lazy::new(|| {
-    Regex::new(r"\[playlist-started:metadata\](?P<id>[^;]+);(?P<title>[^;]+);(?P<url>[^;]+)").unwrap()
-});
+    RE.replace(message, format!("{:>3}%  ", new_percent)).into_owned()
+}
 
 fn main() {
-    let lines = [
-        "[playlist-started:url]https://www.youtube.com/watch?v=-tt2ZmH-3uc",
-        "[playlist-started:url]https://www.youtube.com/watch?v=Xsvg_WatcaE",
-        "[playlist-started:metadata]PLYXU4Ir4-8GPeP4lKT9aevhyhbSoHR04M;Ongezellig;https://www.youtube.com/playlist?list=PLYXU4Ir4-8GPeP4lKT9aevhyhbSoHR04M&si=Lf2wNtv6hpcAH3us",
-    ];
-
-    for line in &lines {
-        if let Some(caps) = PLAYLIST_VIDEOS_REGEX.captures(line) {
-            println!("Matched video URL: {}", &caps["url"]);
-        } else if let Some(caps) = PLAYLIST_METADATA_REGEX.captures(line) {
-            println!("Matched metadata:");
-            println!("  ID:    {}", &caps["id"]);
-            println!("  Title: {}", &caps["title"]);
-            println!("  URL:   {}", &caps["url"]);
-        } else {
-            println!("No match for line: {line}");
-        }
-    }
+    let msg = "100%  Cool Title";
+    let updated = update_percentage(msg, 42);
+    println!("{}", updated); // Output: " 42%  Cool Title"
 }

@@ -173,7 +173,7 @@ impl DownloadPlaylistView {
         let playlist_progress_bar = progress_bars.add(::indicatif::ProgressBar::no_length()
             .with_style(PROGRESS_BAR_STYLE.clone()));
 
-        playlist_progress_bar.set_prefix(format!("{:<26}", ""));
+        playlist_progress_bar.set_prefix(format!("{:<27}", ""));
         playlist_progress_bar.set_message("??/??");
 
         let video_progress_bars = ::std::sync::Arc::new(::tokio::sync::Mutex::new(::std::collections::HashMap::new()));
@@ -218,8 +218,6 @@ impl<'event> Update<EventRef<'event, PlaylistDownloadStartedEventPayload>> for D
     async fn update(self: ::std::sync::Arc<Self>, event: &EventRef<'event, PlaylistDownloadStartedEventPayload>) -> Fallible<()> {
         use ::colored::Colorize as _;
 
-        println!("OB: {:?}", event);
-        
         let PlaylistDownloadStartedEventPayload { playlist } = &event.payload;
 
         let title = playlist.metadata.title
@@ -243,9 +241,7 @@ impl<'event> Update<EventRef<'event, PlaylistDownloadProgressUpdatedEventPayload
     async fn update(self: ::std::sync::Arc<Self>, event: &EventRef<'event, PlaylistDownloadProgressUpdatedEventPayload>) -> Fallible<()> {
         let PlaylistDownloadProgressUpdatedEventPayload { completed, total, .. } = &event.payload;
 
-        println!("OB: {:?}", event);
-
-        let percentage = *completed as f64 / *total as f64;
+        let percentage = *completed as f64 / *total as f64 * 100.0;
 
         self.playlist_progress_bar.set_position(percentage as u64);
         self.playlist_progress_bar.set_message(format!("{}/{}", completed, total));
@@ -256,10 +252,8 @@ impl<'event> Update<EventRef<'event, PlaylistDownloadProgressUpdatedEventPayload
 
 #[async_trait]
 impl<'event> Update<EventRef<'event, PlaylistDownloadCompletedEventPayload>> for DownloadPlaylistView {
-    async fn update(self: ::std::sync::Arc<Self>, event: &EventRef<'event, PlaylistDownloadCompletedEventPayload>) -> Fallible<()> {
+    async fn update(self: ::std::sync::Arc<Self>, _: &EventRef<'event, PlaylistDownloadCompletedEventPayload>) -> Fallible<()> {
         use ::colored::Colorize as _;
-
-        println!("OB: {:?}", event);
 
         static PROGRESS_BAR_FINISH_STYLE: ::once_cell::sync::Lazy<::indicatif::ProgressStyle> = lazy_progress_style!("{prefix} {bar:50.green} {msg}");
 
@@ -291,18 +285,15 @@ impl<'event> Update<EventRef<'event, VideoDownloadStartedEventPayload>> for Down
 
         static PROGRESS_BAR_STYLE: ::once_cell::sync::Lazy<::indicatif::ProgressStyle> = lazy_progress_style!("{prefix} {bar:50} {msg}");
 
-        println!("OB: {:?}", event);
-
-        println!("Inserting worker id: {}", event.metadata.worker_id);
+        println!("{:#?}", event);
 
         let video_progress_bar = self.video_progress_bars.lock().await
             .entry(event.metadata.worker_id.clone())
             .or_insert({
-                let progress_bar = self.progress_bars.add(::indicatif::ProgressBar::new(100));
+                let progress_bar = self.progress_bars.insert_before(&self.playlist_progress_bar, ::indicatif::ProgressBar::new(100));
+                println!("new worker id: {}", event.metadata.worker_id);
 
                 progress_bar.disable_steady_tick();
-
-                print!( "new");
 
                 progress_bar
             })
@@ -325,9 +316,7 @@ impl<'event> Update<EventRef<'event, VideoDownloadStartedEventPayload>> for Down
 #[async_trait]
 impl<'event> Update<EventRef<'event, VideoDownloadProgressUpdatedEventPayload>> for DownloadPlaylistView {
     async fn update(self: ::std::sync::Arc<Self>, event: &EventRef<'event, VideoDownloadProgressUpdatedEventPayload>) -> Fallible<()> {
-        static REGEX: ::once_cell::sync::Lazy<::regex::Regex> = lazy_regex!(r"^\s*\d+%\s{2}");
-
-        println!("OB: {:?}", event);
+        static REGEX: ::once_cell::sync::Lazy<::regex::Regex> = lazy_regex!(r"^\s*(\d{1,3}|\?{2})%  ");
 
         let VideoDownloadProgressUpdatedEventPayload { percentage, size, speed, eta } = event.payload;
 
@@ -349,8 +338,6 @@ impl<'event> Update<EventRef<'event, VideoDownloadCompletedEventPayload>> for Do
     async fn update(self: ::std::sync::Arc<Self>, event: &EventRef<'event, VideoDownloadCompletedEventPayload>) -> Fallible<()> {
         use ::colored::Colorize as _;
 
-        println!("OB: {:?}", event);
-
         static PROGRESS_BAR_FINISH_STYLE: ::once_cell::sync::Lazy<::indicatif::ProgressStyle> = lazy_progress_style!("{prefix} {bar:50.green} {msg}");
 
         let video_progress_bar = self.video_progress_bars.lock().await
@@ -359,8 +346,10 @@ impl<'event> Update<EventRef<'event, VideoDownloadCompletedEventPayload>> for Do
             .clone();
         
         video_progress_bar.set_style(PROGRESS_BAR_FINISH_STYLE.clone());
-        video_progress_bar.set_prefix(video_progress_bar.prefix().bright_green().to_string());
-        video_progress_bar.set_message(video_progress_bar.message().bright_green().to_string());
+        video_progress_bar.set_prefix(video_progress_bar.prefix().green().to_string());
+        video_progress_bar.set_message(video_progress_bar.message().green().to_string());
+
+        video_progress_bar.finish();
 
         Ok(())
     }
@@ -470,10 +459,7 @@ where
                                 payload,
                             })
                             .map(Ok)
-                            .try_for_each(|event| async {
-                                println!("DL: event `{:?}` from worker `{}`", event, worker_id);
-                                video_download_events_tx.send(event)
-                            })
+                            .try_for_each(|event| async { video_download_events_tx.send(event) })
                             .await
                             .map_err(::anyhow::Error::from)
                     },
@@ -590,6 +576,7 @@ where
         let unresolved_videos_notify = ::std::sync::Arc::new(::tokio::sync::Notify::new());
         
         (0..self.configurations.workers).for_each(|_| {
+            let worker_id = ::std::sync::Arc::clone(&self.id_generator).generate();
             ::tokio::spawn({
                 let this = ::std::sync::Arc::clone(&self);
 
@@ -597,7 +584,7 @@ where
                 let video_download_events_tx = video_download_events_tx.clone();
                 let diagnostic_events_tx = diagnostic_events_tx.clone();
 
-                let worker_id = ::std::sync::Arc::clone(&this.id_generator).generate();
+                // let worker_id = ::std::sync::Arc::clone(&this.id_generator).generate();
                 let correlation_id = correlation_id.clone();
 
                 let directory = directory.clone();
@@ -683,7 +670,6 @@ where
 
             async move {
                 unresolved_videos_notify.notified().await;
-                println!("DL: unresolved videos notified done");
 
                 let playlist = ResolvedPlaylist {
                     url: playlist.url,
@@ -795,8 +781,6 @@ impl FromYtdlpLine for VideoDownloadEventPayload {
         Line: AsRef<str>,
         Self: Sized,
     {
-        println!("{}", line.as_ref());
-
         VideoDownloadProgressUpdatedEventPayload::from_line(&line).map(Self::ProgressUpdated)
             .or(VideoDownloadStartedEventPayload::from_line(&line).map(Self::Started))
             .or(VideoDownloadCompletedEventPayload::from_line(&line).map(Self::Completed))
