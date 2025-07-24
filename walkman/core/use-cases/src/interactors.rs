@@ -27,14 +27,17 @@ pub struct DownloadVideoInteractor {
 #[async_trait]
 impl Accept<DownloadVideoRequestModel> for DownloadVideoInteractor {
     async fn accept(self: ::std::sync::Arc<Self>, request: DownloadVideoRequestModel) -> Fallible<()> {
-        let DownloadVideoRequestModel { url, directory } = request;
+        ::std::sync::Arc::clone(&self.output_boundary).activate().await?;
 
+        let DownloadVideoRequestModel { url, directory } = request;
         let (video_download_events, diagnostic_events) = ::std::sync::Arc::clone(&self.downloader).download_video(url, directory).await?;
 
         ::tokio::try_join!(
             ::std::sync::Arc::clone(&self).accept(video_download_events),
             ::std::sync::Arc::clone(&self).accept(diagnostic_events),
         )?;
+
+        ::std::sync::Arc::clone(&self.output_boundary).deactivate().await?;
 
         Ok(())
     }
@@ -85,6 +88,8 @@ pub struct DownloadPlaylistInteractor {
 #[async_trait]
 impl Accept<DownloadPlaylistRequestModel> for DownloadPlaylistInteractor {
     async fn accept(self: ::std::sync::Arc<Self>, request: DownloadPlaylistRequestModel) -> Fallible<()> {
+        ::std::sync::Arc::clone(&self.output_boundary).activate().await?;
+
         let DownloadPlaylistRequestModel { url, directory } = request;
         let (playlist_download_events, video_download_events, diagnostic_events) = ::std::sync::Arc::clone(&self.downloader).download_playlist(url, directory).await?;
 
@@ -93,6 +98,8 @@ impl Accept<DownloadPlaylistRequestModel> for DownloadPlaylistInteractor {
             ::std::sync::Arc::clone(&self).accept(video_download_events),
             ::std::sync::Arc::clone(&self).accept(diagnostic_events),
         )?;
+
+        ::std::sync::Arc::clone(&self.output_boundary).deactivate().await?;
 
         Ok(())
     }

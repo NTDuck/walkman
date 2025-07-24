@@ -20,14 +20,6 @@ pub struct DownloadVideoRequestModel {
     pub directory: MaybeOwnedPath,
 }
 
-pub trait DownloadVideoOutputBoundary: Update<VideoDownloadEvent> + Update<DiagnosticEvent> {}
-
-impl<OutputBoundary> DownloadVideoOutputBoundary for OutputBoundary
-where
-    OutputBoundary: Update<VideoDownloadEvent> + Update<DiagnosticEvent>,
-{
-}
-
 pub trait DownloadPlaylistInputBoundary: Accept<DownloadPlaylistRequestModel> {}
 
 impl<InputBoundary> DownloadPlaylistInputBoundary for InputBoundary
@@ -41,12 +33,26 @@ pub struct DownloadPlaylistRequestModel {
     pub directory: MaybeOwnedPath,
 }
 
-pub trait DownloadPlaylistOutputBoundary: Update<PlaylistDownloadEvent> + Update<VideoDownloadEvent> + Update<DiagnosticEvent> {}
+pub trait DownloadVideoOutputBoundary: Activate + Update<VideoDownloadEvent> + Update<DiagnosticEvent> {}
+
+impl<OutputBoundary> DownloadVideoOutputBoundary for OutputBoundary
+where
+    OutputBoundary: Activate + Update<VideoDownloadEvent> + Update<DiagnosticEvent>,
+{
+}
+
+pub trait DownloadPlaylistOutputBoundary: Activate + Update<PlaylistDownloadEvent> + Update<VideoDownloadEvent> + Update<DiagnosticEvent> {}
 
 impl<OutputBoundary> DownloadPlaylistOutputBoundary for OutputBoundary
 where
-    OutputBoundary: Update<PlaylistDownloadEvent> + Update<VideoDownloadEvent> + Update<DiagnosticEvent>,
+    OutputBoundary: Activate + Update<PlaylistDownloadEvent> + Update<VideoDownloadEvent> + Update<DiagnosticEvent>,
 {
+}
+
+#[async_trait]
+pub trait Activate: Send + Sync {
+    async fn activate(self: ::std::sync::Arc<Self>) -> Fallible<()>;
+    async fn deactivate(self: ::std::sync::Arc<Self>) -> Fallible<()>;
 }
 
 #[async_trait]

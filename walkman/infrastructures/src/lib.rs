@@ -4,6 +4,7 @@ use ::async_trait::async_trait;
 use ::derive_new::new;
 use ::domain::PlaylistMetadata;
 use ::domain::VideoMetadata;
+use use_cases::boundaries::Activate;
 use ::use_cases::boundaries::Update;
 use ::use_cases::gateways::Downloader;
 use ::use_cases::gateways::MetadataWriter;
@@ -17,7 +18,7 @@ use ::use_cases::models::events::DiagnosticEventPayload;
 use ::use_cases::models::events::DiagnosticLevel;
 use ::use_cases::models::events::Event;
 use ::use_cases::models::events::EventMetadata;
-use use_cases::models::events::EventRef;
+use ::use_cases::models::events::EventRef;
 use ::use_cases::models::events::PlaylistDownloadCompletedEventPayload;
 use ::use_cases::models::events::PlaylistDownloadEvent;
 use ::use_cases::models::events::PlaylistDownloadEventPayload;
@@ -46,6 +47,8 @@ impl DownloadVideoView {
         static PROGRESS_BAR_STYLE: ::once_cell::sync::Lazy<::indicatif::ProgressStyle> = progress_style!("{prefix} {bar:50} {msg}");
         
         let progress_bars = ::indicatif::MultiProgress::new();
+        progress_bars.set_draw_target(::indicatif::ProgressDrawTarget::hidden());
+
         let video_progress_bar = progress_bars.add(::indicatif::ProgressBar::new(100)
             .with_style(PROGRESS_BAR_STYLE.clone()));
 
@@ -55,6 +58,22 @@ impl DownloadVideoView {
         video_progress_bar.set_message(format!("{:>3}%", "??"));
 
         Ok(Self { progress_bars, video_progress_bar })
+    }
+}
+
+#[async_trait]
+impl Activate for DownloadVideoView {
+    async fn activate(self: ::std::sync::Arc<Self>) -> Fallible<()> {
+        self.progress_bars.set_draw_target(::indicatif::ProgressDrawTarget::stderr());
+        self.video_progress_bar.tick();
+
+        Ok(())
+    }
+
+    async fn deactivate(self: ::std::sync::Arc<Self>) -> Fallible<()> {
+        self.progress_bars.set_draw_target(::indicatif::ProgressDrawTarget::hidden());
+
+        Ok(())
     }
 }
 
@@ -147,6 +166,8 @@ impl DownloadPlaylistView {
         static PROGRESS_BAR_STYLE: ::once_cell::sync::Lazy<::indicatif::ProgressStyle> = progress_style!("{prefix} {bar:50} {msg}");
         
         let progress_bars = ::indicatif::MultiProgress::new();
+        progress_bars.set_draw_target(::indicatif::ProgressDrawTarget::hidden());
+
         let playlist_progress_bar = progress_bars.add(::indicatif::ProgressBar::no_length()
             .with_style(PROGRESS_BAR_STYLE.clone()));
 
@@ -156,6 +177,26 @@ impl DownloadPlaylistView {
         let video_progress_bars = ::std::sync::Arc::new(::tokio::sync::Mutex::new(::std::collections::HashMap::new()));
 
         Ok(Self { progress_bars, playlist_progress_bar, video_progress_bars })
+    }
+}
+
+#[async_trait]
+impl Activate for DownloadPlaylistView {
+    async fn activate(self: ::std::sync::Arc<Self>) -> Fallible<()> {
+        self.progress_bars.set_draw_target(::indicatif::ProgressDrawTarget::stderr());
+
+        self.playlist_progress_bar.tick();
+        self.video_progress_bars.lock().await
+            .iter()
+            .for_each(|(_, video_progress_bar)| video_progress_bar.tick());
+
+        Ok(())
+    }
+
+    async fn deactivate(self: ::std::sync::Arc<Self>) -> Fallible<()> {
+        self.progress_bars.set_draw_target(::indicatif::ProgressDrawTarget::hidden());
+        
+        Ok(())
     }
 }
 
@@ -174,6 +215,8 @@ impl Update<PlaylistDownloadEvent> for DownloadPlaylistView {
 impl<'event> Update<EventRef<'event, PlaylistDownloadStartedEventPayload>> for DownloadPlaylistView {
     async fn update(self: ::std::sync::Arc<Self>, event: &EventRef<'event, PlaylistDownloadStartedEventPayload>) -> Fallible<()> {
         use ::colored::Colorize as _;
+
+        println!("OB: {:?}", event);
         
         let PlaylistDownloadStartedEventPayload { playlist } = &event.payload;
 
@@ -190,6 +233,8 @@ impl<'event> Update<EventRef<'event, PlaylistDownloadProgressUpdatedEventPayload
     async fn update(self: ::std::sync::Arc<Self>, event: &EventRef<'event, PlaylistDownloadProgressUpdatedEventPayload>) -> Fallible<()> {
         let PlaylistDownloadProgressUpdatedEventPayload { completed, total, .. } = &event.payload;
 
+        println!("OB: {:?}", event);
+
         let percentage = *completed as f64 / *total as f64;
 
         self.playlist_progress_bar.set_position(percentage as u64);
@@ -201,8 +246,10 @@ impl<'event> Update<EventRef<'event, PlaylistDownloadProgressUpdatedEventPayload
 
 #[async_trait]
 impl<'event> Update<EventRef<'event, PlaylistDownloadCompletedEventPayload>> for DownloadPlaylistView {
-    async fn update(self: ::std::sync::Arc<Self>, _: &EventRef<'event, PlaylistDownloadCompletedEventPayload>) -> Fallible<()> {
+    async fn update(self: ::std::sync::Arc<Self>, event: &EventRef<'event, PlaylistDownloadCompletedEventPayload>) -> Fallible<()> {
         use ::colored::Colorize as _;
+
+        println!("OB: {:?}", event);
 
         static PROGRESS_BAR_FINISH_STYLE: ::once_cell::sync::Lazy<::indicatif::ProgressStyle> = progress_style!("{prefix} {bar:50.green} {msg}");
 
@@ -232,12 +279,18 @@ impl<'event> Update<EventRef<'event, VideoDownloadStartedEventPayload>> for Down
     async fn update(self: ::std::sync::Arc<Self>, event: &EventRef<'event, VideoDownloadStartedEventPayload>) -> Fallible<()> {
         static PROGRESS_BAR_STYLE: ::once_cell::sync::Lazy<::indicatif::ProgressStyle> = progress_style!("{prefix} {bar:50} {msg}");
 
+        println!("OB: {:?}", event);
+
+        println!("Inserting worker id: {}", event.metadata.worker_id);
+
         let video_progress_bar = self.video_progress_bars.lock().await
             .entry(event.metadata.worker_id.clone())
             .or_insert({
                 let progress_bar = self.progress_bars.add(::indicatif::ProgressBar::new(100));
 
                 progress_bar.disable_steady_tick();
+
+                print!( "new");
 
                 progress_bar
             })
@@ -258,6 +311,8 @@ impl<'event> Update<EventRef<'event, VideoDownloadProgressUpdatedEventPayload>> 
     async fn update(self: ::std::sync::Arc<Self>, event: &EventRef<'event, VideoDownloadProgressUpdatedEventPayload>) -> Fallible<()> {
         static REGEX: ::once_cell::sync::Lazy<::regex::Regex> = regex!(r"^\s*\d+%\s{2}");
 
+        println!("OB: {:?}", event);
+
         let VideoDownloadProgressUpdatedEventPayload { percentage, size, speed, eta } = event.payload;
 
         let video_progress_bar = self.video_progress_bars.lock().await
@@ -277,6 +332,8 @@ impl<'event> Update<EventRef<'event, VideoDownloadProgressUpdatedEventPayload>> 
 impl<'event> Update<EventRef<'event, VideoDownloadCompletedEventPayload>> for DownloadPlaylistView {
     async fn update(self: ::std::sync::Arc<Self>, event: &EventRef<'event, VideoDownloadCompletedEventPayload>) -> Fallible<()> {
         use ::colored::Colorize as _;
+
+        println!("OB: {:?}", event);
 
         static PROGRESS_BAR_FINISH_STYLE: ::once_cell::sync::Lazy<::indicatif::ProgressStyle> = progress_style!("{prefix} {bar:50.green} {msg}");
 
@@ -444,43 +501,55 @@ where
             "--print", "video:[playlist-started:url]%(url)s"
         ])?;
 
-        let worker_id = ::std::sync::Arc::clone(&self.id_generator).generate();
         let correlation_id = ::std::sync::Arc::clone(&self.id_generator).generate();
 
-        let (playlist, _) = ::tokio::try_join!(
-            async {
-                let payload = PlaylistDownloadStartedEventPayload::from_lines(stdout).await.some()?;
-                let playlist = payload.playlist.clone();
+        let playlist = tokio::spawn({
+            let worker_id = std::sync::Arc::clone(&self.id_generator).generate();
+            let correlation_id = correlation_id.clone();
 
-                let event = Event {
-                    metadata: EventMetadata {
-                        worker_id: worker_id.clone(),
-                        correlation_id: correlation_id.clone(),
-                        timestamp: ::std::time::SystemTime::now(),
+            let playlist_download_events_tx = playlist_download_events_tx.clone();
+            let diagnostic_events_tx = diagnostic_events_tx.clone();
+
+            async move {
+                let (playlist, _) = tokio::try_join!(
+                    async {
+                        let payload = PlaylistDownloadStartedEventPayload::from_lines(stdout).await.ok_or_else(|| anyhow::anyhow!("No payload"))?;
+                        let playlist = payload.playlist.clone();
+
+                        let event = Event {
+                            metadata: EventMetadata {
+                                worker_id: worker_id.clone(),
+                                correlation_id: correlation_id.clone(),
+                                timestamp: std::time::SystemTime::now(),
+                            },
+                            payload: PlaylistDownloadEventPayload::Started(payload),
+                        };
+
+                        playlist_download_events_tx.send(event)?;
+                        Ok(playlist)
                     },
-                    payload: PlaylistDownloadEventPayload::Started(payload),
-                };
 
-                playlist_download_events_tx.send(event)?;
-                Ok(playlist)
-            },
+                    async {
+                        stderr
+                            .filter_map(|line| async { DiagnosticEventPayload::from_line(line) })
+                            .map(|payload| Ok(Event {
+                                metadata: EventMetadata {
+                                    worker_id: worker_id.clone(),
+                                    correlation_id: correlation_id.clone(),
+                                    timestamp: std::time::SystemTime::now(),
+                                },
+                                payload,
+                            }))
+                            .try_for_each(|event| async { diagnostic_events_tx.send(event) })
+                            .await
+                            .map_err(anyhow::Error::from)
+                    },
+                )?;
 
-            async {
-                stderr
-                    .filter_map(|line| async { DiagnosticEventPayload::from_line(line) })
-                    .map(|payload| Ok(Event {
-                        metadata: EventMetadata {
-                            worker_id: worker_id.clone(),
-                            correlation_id: correlation_id.clone(),
-                            timestamp: std::time::SystemTime::now(),
-                        },
-                        payload,
-                    }))
-                    .try_for_each(|event| async { diagnostic_events_tx.send(event) })
-                    .await
-                    .map_err(::anyhow::Error::from)
-            },
-        )?;
+                Ok::<_, anyhow::Error>(playlist)
+            }
+        })
+        .await??;
 
         let completed = ::std::sync::Arc::new(::std::sync::atomic::AtomicUsize::new(0));
         let total = playlist.videos.len();
@@ -491,107 +560,120 @@ where
         let unresolved_videos: ::std::sync::Arc<::tokio::sync::Mutex<::std::collections::VecDeque<_>>> =
             ::std::sync::Arc::new(::tokio::sync::Mutex::new(playlist.videos.clone().into()));
         
-        (0..self.configurations.workers).for_each(|_| { ::tokio::spawn({
-            let this = ::std::sync::Arc::clone(&self);
+        (0..self.configurations.workers).for_each(|_| {
+            ::tokio::spawn({
+                let this = ::std::sync::Arc::clone(&self);
 
-            let playlist_download_events_tx = playlist_download_events_tx.clone();
-            let video_download_events_tx = video_download_events_tx.clone();
-            let diagnostic_events_tx = diagnostic_events_tx.clone();
+                let playlist_download_events_tx = playlist_download_events_tx.clone();
+                let video_download_events_tx = video_download_events_tx.clone();
+                let diagnostic_events_tx = diagnostic_events_tx.clone();
 
-            let worker_id = ::std::sync::Arc::clone(&this.id_generator).generate();
-            let correlation_id = correlation_id.clone();
+                let worker_id = ::std::sync::Arc::clone(&this.id_generator).generate();
+                let correlation_id = correlation_id.clone();
 
-            let directory = directory.clone();
-            let completed = ::std::sync::Arc::clone(&completed);
-            let resolved_videos = ::std::sync::Arc::clone(&resolved_videos);
-            let unresolved_videos = ::std::sync::Arc::clone(&unresolved_videos);
+                let directory = directory.clone();
+                let completed = ::std::sync::Arc::clone(&completed);
+                let resolved_videos = ::std::sync::Arc::clone(&resolved_videos);
+                let unresolved_videos = ::std::sync::Arc::clone(&unresolved_videos);
 
-            async move {
-                while let Some(video) = unresolved_videos.lock().await.pop_front() {
-                    let (video_download_events, diagnostic_events) = ::std::sync::Arc::clone(&this).download_video(video.url.clone(), directory.clone()).await?;
+                async move {
+                    while let Some(video) = unresolved_videos.lock().await.pop_front() {
+                        let (video_download_events, diagnostic_events) = ::std::sync::Arc::clone(&this).download_video(video.url.clone(), directory.clone()).await?;
 
-                    ::tokio::try_join!(
-                        async {
-                            ::futures::pin_mut!(video_download_events);
+                        ::tokio::try_join!(
+                            async {
+                                ::futures::pin_mut!(video_download_events);
 
-                            while let Some(event) = video_download_events.next().await {
-                                match event.payload {
-                                    VideoDownloadEventPayload::Completed(ref payload) => {
-                                        completed.fetch_add(1, ::std::sync::atomic::Ordering::Relaxed);
-                                        resolved_videos.lock().await.push(payload.video.clone());
+                                while let Some(event) = video_download_events.next().await {
+                                    match event.payload {
+                                        VideoDownloadEventPayload::Completed(ref payload) => {
+                                            completed.fetch_add(1, ::std::sync::atomic::Ordering::Relaxed);
+                                            resolved_videos.lock().await.push(payload.video.clone());
 
-                                        let event = Event {
-                                            metadata: EventMetadata {
-                                                worker_id: worker_id.clone(),
-                                                correlation_id: correlation_id.clone(),
-                                                timestamp: ::std::time::SystemTime::now(),
-                                            },
-                                            payload: PlaylistDownloadEventPayload::ProgressUpdated(
-                                                PlaylistDownloadProgressUpdatedEventPayload {
-                                                    video: payload.video.clone(),
-                                                    completed: completed.load(::std::sync::atomic::Ordering::Relaxed),
-                                                    total,
+                                            let event = Event {
+                                                metadata: EventMetadata {
+                                                    worker_id: worker_id.clone(),
+                                                    correlation_id: correlation_id.clone(),
+                                                    timestamp: ::std::time::SystemTime::now(),
                                                 },
-                                            ),
-                                        };
+                                                payload: PlaylistDownloadEventPayload::ProgressUpdated(
+                                                    PlaylistDownloadProgressUpdatedEventPayload {
+                                                        video: payload.video.clone(),
+                                                        completed: completed.load(::std::sync::atomic::Ordering::Relaxed),
+                                                        total,
+                                                    },
+                                                ),
+                                            };
 
-                                        playlist_download_events_tx.send(event)?;
-                                    },
-                                    _ => {},
+                                            playlist_download_events_tx.send(event)?;
+                                        },
+                                        _ => {},
+                                    }
+
+                                    video_download_events_tx.send(event)?;
                                 }
 
-                                video_download_events_tx.send(event)?;
-                            }
+                                Ok::<_, ::anyhow::Error>(())
+                            },
 
-                            Ok::<_, ::anyhow::Error>(())
-                        },
+                            async {
+                                ::futures::pin_mut!(diagnostic_events);
 
-                        async {
-                            ::futures::pin_mut!(diagnostic_events);
+                                while let Some(event) = diagnostic_events.next().await {
+                                    let event = Event {
+                                        metadata: EventMetadata {
+                                            worker_id: worker_id.clone(),
+                                            correlation_id: correlation_id.clone(),
+                                            timestamp: ::std::time::SystemTime::now(),
+                                        },
+                                        payload: event.payload,
+                                    };
 
-                            while let Some(event) = diagnostic_events.next().await {
-                                let event = Event {
-                                    metadata: EventMetadata {
-                                        worker_id: worker_id.clone(),
-                                        correlation_id: correlation_id.clone(),
-                                        timestamp: ::std::time::SystemTime::now(),
-                                    },
-                                    payload: event.payload,
-                                };
+                                    diagnostic_events_tx.send(event)?;
+                                }
 
-                                diagnostic_events_tx.send(event)?;
-                            }
+                                Ok::<_, ::anyhow::Error>(())
+                            },
+                        )?;
 
-                            Ok::<_, ::anyhow::Error>(())
-                        },
-                    )?;
+                        ::tokio::time::sleep(this.configurations.cooldown).await;
+                    }
 
-                    ::tokio::time::sleep(this.configurations.cooldown).await;
+                    Ok::<_, ::anyhow::Error>(())
                 }
+            });
+        });
+
+        ::tokio::spawn({
+            let worker_id = ::std::sync::Arc::clone(&self.id_generator).generate();
+            let correlation_id = correlation_id.clone();
+
+            let playlist_download_events_tx = playlist_download_events_tx.clone();
+
+            async move {
+                let playlist = ResolvedPlaylist {
+                    url: playlist.url,
+                    id: playlist.id,
+                    metadata: PlaylistMetadata {
+                        title: playlist.metadata.title,
+                    },
+                    videos: ::std::mem::take(&mut *resolved_videos.lock().await),
+                };
+
+                let event = Event {
+                    metadata: EventMetadata {
+                        worker_id,
+                        correlation_id,
+                        timestamp: ::std::time::SystemTime::now(),
+                    },
+                    payload: PlaylistDownloadEventPayload::Completed(PlaylistDownloadCompletedEventPayload { playlist }),
+                };
+
+                playlist_download_events_tx.send(event)?;
 
                 Ok::<_, ::anyhow::Error>(())
             }
-        }); });
-
-        let playlist = ResolvedPlaylist {
-            url: playlist.url,
-            id: playlist.id,
-            metadata: PlaylistMetadata {
-                title: playlist.metadata.title,
-            },
-            videos: ::std::mem::take(&mut *resolved_videos.lock().await),
-        };
-
-        let event = Event {
-            metadata: EventMetadata {
-                worker_id: ::std::sync::Arc::clone(&self.id_generator).generate(),
-                correlation_id: correlation_id.clone(),
-                timestamp: ::std::time::SystemTime::now(),
-            },
-            payload: PlaylistDownloadEventPayload::Completed(PlaylistDownloadCompletedEventPayload { playlist }),
-        };
-
-        playlist_download_events_tx.send(event)?;
+        });
 
         Ok((
             ::std::boxed::Box::pin(::tokio_stream::wrappers::UnboundedReceiverStream::new(playlist_download_events_rx)),
@@ -801,11 +883,11 @@ impl FromYtdlpLines for PlaylistDownloadStartedEventPayload {
         use ::futures::StreamExt as _;
 
         static PLAYLIST_VIDEOS_REGEX: ::once_cell::sync::Lazy<::regex::Regex> = regex!(
-            r"\[playlist-started:url\];(?P<url>[^;]+)"
+            r"\[playlist-started:url\](?P<url>[^;]+)"
         );
 
         static PLAYLIST_METADATA_REGEX: ::once_cell::sync::Lazy<::regex::Regex> = regex!(
-            r"\[playlist-started:metadata\];(?P<id>[^;]+);(?P<title>[^;]+);(?P<url>[^;]+)"
+            r"\[playlist-started:metadata\](?P<id>[^;]+);(?P<title>[^;]+);(?P<url>[^;]+)"
         );
 
         let mut videos = Vec::new();
@@ -813,8 +895,6 @@ impl FromYtdlpLines for PlaylistDownloadStartedEventPayload {
         ::futures::pin_mut!(lines);
 
         while let Some(line) = lines.next().await {
-            println!("{}", line.as_ref());
-
             if let Some(captures) = PLAYLIST_VIDEOS_REGEX.captures(line.as_ref()) {
                 videos.push(UnresolvedVideo {
                     url: parse_attr(&captures["url"])?,
