@@ -4,8 +4,7 @@ use ::async_trait::async_trait;
 use ::derive_new::new;
 use ::domain::PlaylistMetadata;
 use ::domain::VideoMetadata;
-use rayon::iter::IntoParallelIterator;
-use use_cases::boundaries::Activate;
+use ::use_cases::boundaries::Activate;
 use ::use_cases::boundaries::Update;
 use ::use_cases::gateways::Downloader;
 use ::use_cases::gateways::MetadataWriter;
@@ -42,10 +41,9 @@ pub struct DownloadVideoView {
     video_progress_bar: ::indicatif::ProgressBar,
 }
 
-// TODO migrate to with_key
 impl DownloadVideoView {
     pub fn new() -> Fallible<Self> {
-        static PROGRESS_BAR_STYLE: ::once_cell::sync::Lazy<::indicatif::ProgressStyle> = progress_style!("{prefix} {bar:50} {msg}");
+        static PROGRESS_BAR_STYLE: ::once_cell::sync::Lazy<::indicatif::ProgressStyle> = lazy_progress_style!("{prefix} {bar:50} {msg}");
         
         let progress_bars = ::indicatif::MultiProgress::new();
         progress_bars.set_draw_target(::indicatif::ProgressDrawTarget::hidden());
@@ -96,8 +94,11 @@ impl<'event> Update<EventRef<'event, VideoDownloadStartedEventPayload>> for Down
 
         let VideoDownloadStartedEventPayload { video } = event.payload;
 
-        self.video_progress_bar
-            .println(format!("Downloading video: {}", video.metadata.title.white().bold()));
+        let title = video.metadata.title
+            .as_deref()
+            .map_or_else(|| NULL.clone(), |title| title.white().bold());
+        
+        self.video_progress_bar.println(format!("Downloading video: {}", title));
 
         Ok(())
     }
@@ -121,7 +122,7 @@ impl<'event> Update<EventRef<'event, VideoDownloadCompletedEventPayload>> for Do
     async fn update(self: ::std::sync::Arc<Self>, _: &EventRef<'event, VideoDownloadCompletedEventPayload>) -> Fallible<()> {
         use ::colored::Colorize as _;
 
-        static PROGRESS_BAR_FINISH_STYLE: ::once_cell::sync::Lazy<::indicatif::ProgressStyle> = progress_style!("{prefix} {bar:50.green} {msg}");
+        static PROGRESS_BAR_FINISH_STYLE: ::once_cell::sync::Lazy<::indicatif::ProgressStyle> = lazy_progress_style!("{prefix} {bar:50.green} {msg}");
         
         self.video_progress_bar.set_style(PROGRESS_BAR_FINISH_STYLE.clone());
         self.video_progress_bar.set_prefix(self.video_progress_bar.prefix().green().to_string());
@@ -138,7 +139,7 @@ impl Update<DiagnosticEvent> for DownloadVideoView {
     async fn update(self: ::std::sync::Arc<Self>, event: &DiagnosticEvent) -> Fallible<()> {
         use ::colored::Colorize as _;
 
-        static DECOY_PROGRESS_BAR_STYLE: ::once_cell::sync::Lazy<::indicatif::ProgressStyle> = progress_style!("{msg}");
+        static DECOY_PROGRESS_BAR_STYLE: ::once_cell::sync::Lazy<::indicatif::ProgressStyle> = lazy_progress_style!("{msg}");
 
         let DiagnosticEventPayload { message, level } = &event.payload;
 
@@ -164,7 +165,7 @@ pub struct DownloadPlaylistView {
 
 impl DownloadPlaylistView {
     pub fn new() -> Fallible<Self> {
-        static PROGRESS_BAR_STYLE: ::once_cell::sync::Lazy<::indicatif::ProgressStyle> = progress_style!("{prefix} {bar:50} {msg}");
+        static PROGRESS_BAR_STYLE: ::once_cell::sync::Lazy<::indicatif::ProgressStyle> = lazy_progress_style!("{prefix} {bar:50} {msg}");
         
         let progress_bars = ::indicatif::MultiProgress::new();
         progress_bars.set_draw_target(::indicatif::ProgressDrawTarget::hidden());
@@ -221,8 +222,16 @@ impl<'event> Update<EventRef<'event, PlaylistDownloadStartedEventPayload>> for D
         
         let PlaylistDownloadStartedEventPayload { playlist } = &event.payload;
 
-        self.playlist_progress_bar.set_length(playlist.videos.len() as u64);
-        self.playlist_progress_bar.println(format!("Downloading playlist: {}", playlist.metadata.title.white().bold()));
+        let title = playlist.metadata.title
+            .as_deref()
+            .map_or_else(|| NULL.clone(), |title| title.white().bold());
+
+        let length = playlist.videos
+            .as_deref()
+            .map_or(0, |videos| videos.len());
+
+        self.playlist_progress_bar.set_length(length as u64);
+        self.playlist_progress_bar.println(format!("Downloading playlist: {}", title));
 
         Ok(())
     }
@@ -252,7 +261,7 @@ impl<'event> Update<EventRef<'event, PlaylistDownloadCompletedEventPayload>> for
 
         println!("OB: {:?}", event);
 
-        static PROGRESS_BAR_FINISH_STYLE: ::once_cell::sync::Lazy<::indicatif::ProgressStyle> = progress_style!("{prefix} {bar:50.green} {msg}");
+        static PROGRESS_BAR_FINISH_STYLE: ::once_cell::sync::Lazy<::indicatif::ProgressStyle> = lazy_progress_style!("{prefix} {bar:50.green} {msg}");
 
         self.playlist_progress_bar.set_style(PROGRESS_BAR_FINISH_STYLE.clone());
         self.playlist_progress_bar.set_prefix(self.playlist_progress_bar.prefix().green().to_string());
@@ -278,7 +287,9 @@ impl Update<VideoDownloadEvent> for DownloadPlaylistView {
 #[async_trait]
 impl<'event> Update<EventRef<'event, VideoDownloadStartedEventPayload>> for DownloadPlaylistView {
     async fn update(self: ::std::sync::Arc<Self>, event: &EventRef<'event, VideoDownloadStartedEventPayload>) -> Fallible<()> {
-        static PROGRESS_BAR_STYLE: ::once_cell::sync::Lazy<::indicatif::ProgressStyle> = progress_style!("{prefix} {bar:50} {msg}");
+        use ::colored::Colorize as _;
+
+        static PROGRESS_BAR_STYLE: ::once_cell::sync::Lazy<::indicatif::ProgressStyle> = lazy_progress_style!("{prefix} {bar:50} {msg}");
 
         println!("OB: {:?}", event);
 
@@ -297,11 +308,15 @@ impl<'event> Update<EventRef<'event, VideoDownloadStartedEventPayload>> for Down
             })
             .clone();
 
+        let title = event.payload.video.metadata.title
+            .as_deref()
+            .map_or_else(|| NULL.clone(), |title| title.white().bold());
+
         video_progress_bar.set_style(PROGRESS_BAR_STYLE.clone());
         
         video_progress_bar.set_position(0);
         video_progress_bar.set_prefix(format!("{:<21} {:4}", format!("{} @ {}", "??MiB", "??MiB/s"), "??:??"));
-        video_progress_bar.set_message(format!("{:>3}%  {}", "??", event.payload.video.metadata.title.unwrap_or_else("N/A".into())));
+        video_progress_bar.set_message(format!("{:>3}%  {}", "??", title));
 
         Ok(())
     }
@@ -310,7 +325,7 @@ impl<'event> Update<EventRef<'event, VideoDownloadStartedEventPayload>> for Down
 #[async_trait]
 impl<'event> Update<EventRef<'event, VideoDownloadProgressUpdatedEventPayload>> for DownloadPlaylistView {
     async fn update(self: ::std::sync::Arc<Self>, event: &EventRef<'event, VideoDownloadProgressUpdatedEventPayload>) -> Fallible<()> {
-        static REGEX: ::once_cell::sync::Lazy<::regex::Regex> = regex!(r"^\s*\d+%\s{2}");
+        static REGEX: ::once_cell::sync::Lazy<::regex::Regex> = lazy_regex!(r"^\s*\d+%\s{2}");
 
         println!("OB: {:?}", event);
 
@@ -336,7 +351,7 @@ impl<'event> Update<EventRef<'event, VideoDownloadCompletedEventPayload>> for Do
 
         println!("OB: {:?}", event);
 
-        static PROGRESS_BAR_FINISH_STYLE: ::once_cell::sync::Lazy<::indicatif::ProgressStyle> = progress_style!("{prefix} {bar:50.green} {msg}");
+        static PROGRESS_BAR_FINISH_STYLE: ::once_cell::sync::Lazy<::indicatif::ProgressStyle> = lazy_progress_style!("{prefix} {bar:50.green} {msg}");
 
         let video_progress_bar = self.video_progress_bars.lock().await
             .get(&event.metadata.worker_id)
@@ -356,7 +371,7 @@ impl Update<DiagnosticEvent> for DownloadPlaylistView {
     async fn update(self: ::std::sync::Arc<Self>, event: &DiagnosticEvent) -> Fallible<()> {
         use ::colored::Colorize as _;
 
-        static DECOY_PROGRESS_BAR_STYLE: ::once_cell::sync::Lazy<::indicatif::ProgressStyle> = progress_style!("{msg}");
+        static DECOY_PROGRESS_BAR_STYLE: ::once_cell::sync::Lazy<::indicatif::ProgressStyle> = lazy_progress_style!("{msg}");
 
         let DiagnosticEventPayload { message, level } = &event.payload;
 
@@ -373,6 +388,8 @@ impl Update<DiagnosticEvent> for DownloadPlaylistView {
         Ok(())
     }
 }
+
+static NULL: ::once_cell::sync::Lazy<::colored::ColoredString> = lazy_color!("N/A".yellow().bold());
 
 #[derive(new)]
 pub struct YtdlpDownloader<CommandExecutorImpl, IdGeneratorImpl> {
@@ -490,6 +507,7 @@ where
     async fn download_playlist(
         self: ::std::sync::Arc<Self>, url: MaybeOwnedString, directory: MaybeOwnedPath,
     ) -> Fallible<(BoxedStream<PlaylistDownloadEvent>, BoxedStream<VideoDownloadEvent>, BoxedStream<DiagnosticEvent>)> {
+        use ::std::ops::Not as _;
         use ::futures::StreamExt as _;
         use ::futures::TryStreamExt as _;
 
@@ -558,16 +576,16 @@ where
         })
         .await??;
 
-        println!("DL: playlist: {:#?}", playlist);
-
         let completed = ::std::sync::Arc::new(::std::sync::atomic::AtomicUsize::new(0));
-        let total = playlist.videos.len();
+        let total = playlist.videos
+            .as_deref()
+            .map_or(0, |videos| videos.len());
 
         let resolved_videos: ::std::sync::Arc<::tokio::sync::Mutex<Vec<_>>> =
             ::std::sync::Arc::new(::tokio::sync::Mutex::new(Vec::with_capacity(total)));
 
         let unresolved_videos: ::std::sync::Arc<::tokio::sync::Mutex<::std::collections::VecDeque<_>>> =
-            ::std::sync::Arc::new(::tokio::sync::Mutex::new(playlist.videos.clone().into()));
+            ::std::sync::Arc::new(::tokio::sync::Mutex::new(playlist.videos.as_deref().map_or_else(|| ::std::collections::VecDeque::new(), |videos| videos.iter().cloned().collect())));
         
         let unresolved_videos_notify = ::std::sync::Arc::new(::tokio::sync::Notify::new());
         
@@ -673,7 +691,10 @@ where
                     metadata: PlaylistMetadata {
                         title: playlist.metadata.title,
                     },
-                    videos: ::std::mem::take(&mut *resolved_videos.lock().await),
+                    videos: {
+                        let videos = ::std::mem::take(&mut *resolved_videos.lock().await);
+                        videos.is_empty().not().then_some(videos)
+                    }
                 };
 
                 let event = Event {
@@ -788,7 +809,7 @@ impl FromYtdlpLine for VideoDownloadStartedEventPayload {
         Line: AsRef<str>,
         Self: Sized,
     {
-        static REGEX: ::once_cell::sync::Lazy<::regex::Regex> = regex!(
+        static REGEX: ::once_cell::sync::Lazy<::regex::Regex> = lazy_regex!(
             r"\[video-started\](?P<url>[^;]+);(?P<id>[^;]+);(?P<title>[^;]+);(?P<album>[^;]+);(?P<artist>[^;]+);(?P<genre>[^\r\n]+)"
         );
 
@@ -798,8 +819,8 @@ impl FromYtdlpLine for VideoDownloadStartedEventPayload {
             url: parse_attr(&captures["url"])?,
             id: parse_attr(&captures["id"])?,
             metadata: VideoMetadata {
-                title: parse_attr(&captures["title"])?,
-                album: parse_attr(&captures["album"])?,
+                title: parse_attr(&captures["title"]),
+                album: parse_attr(&captures["album"]),
                 artists: parse_multivalued_attr(&captures["artist"]),
                 genres: parse_multivalued_attr(&captures["genre"]),
             },
@@ -815,7 +836,9 @@ impl FromYtdlpLine for VideoDownloadProgressUpdatedEventPayload {
         Line: AsRef<str>,
         Self: Sized,
     {
-        static REGEX: ::once_cell::sync::Lazy<::regex::Regex> = regex!(
+        const NULL_ETA: MaybeOwnedString = MaybeOwnedString::Borrowed("00:00");
+
+        static REGEX: ::once_cell::sync::Lazy<::regex::Regex> = lazy_regex!(
             r"\[video-downloading\]\s*(?P<percent>\d+)(?:\.\d+)?%;(?P<eta>[^;]+);\s*(?P<size>[^;]+);\s*(?P<speed>[^\r\n]+)"
         );
 
@@ -823,7 +846,7 @@ impl FromYtdlpLine for VideoDownloadProgressUpdatedEventPayload {
 
         Some(Self {
             percentage: parse_attr(&captures["percent"])?.parse().ok()?,
-            eta: parse_attr(&captures["eta"]).unwrap_or("00:00".into()),
+            eta: parse_attr(&captures["eta"]).unwrap_or(NULL_ETA),
             size: parse_attr(&captures["size"])?,
             speed: parse_attr(&captures["speed"])?,
         })
@@ -836,7 +859,7 @@ impl FromYtdlpLine for VideoDownloadCompletedEventPayload {
         Line: AsRef<str>,
         Self: Sized,
     {
-        static REGEX: ::once_cell::sync::Lazy<::regex::Regex> = regex!(
+        static REGEX: ::once_cell::sync::Lazy<::regex::Regex> = lazy_regex!(
             r"\[video-completed\](?P<url>[^;]+);(?P<id>[^;]+);(?P<title>[^;]+);(?P<album>[^;]+);(?P<artist>[^;]+);(?P<genre>[^\r\n]+);(?P<path>[^;]+)"
         );
 
@@ -846,12 +869,15 @@ impl FromYtdlpLine for VideoDownloadCompletedEventPayload {
             url: parse_attr(&captures["url"])?,
             id: parse_attr(&captures["id"])?,
             metadata: VideoMetadata {
-                title: parse_attr(&captures["title"])?,
-                album: parse_attr(&captures["album"])?,
+                title: parse_attr(&captures["title"]),
+                album: parse_attr(&captures["album"]),
                 artists: parse_multivalued_attr(&captures["artist"]),
                 genres: parse_multivalued_attr(&captures["genre"]),
             },
-            path: ::std::path::PathBuf::from(&*parse_attr(&captures["path"])?).into(),
+            path: match parse_attr(&captures["path"])? {
+                MaybeOwnedString::Borrowed(path) => MaybeOwnedPath::Borrowed(::std::path::Path::new(path)),
+                MaybeOwnedString::Owned(path) => MaybeOwnedPath::Owned(path.into()),
+            },
         };
 
         Some(Self { video })
@@ -864,7 +890,7 @@ impl FromYtdlpLine for DiagnosticEventPayload {
         Line: AsRef<str>,
         Self: Sized,
     {
-        static REGEX: ::once_cell::sync::Lazy<::regex::Regex> = regex!(
+        static REGEX: ::once_cell::sync::Lazy<::regex::Regex> = lazy_regex!(
             r"^(?P<level>WARNING|ERROR):\s*(?P<message>.+)$"
         );
 
@@ -898,13 +924,14 @@ impl FromYtdlpLines for PlaylistDownloadStartedEventPayload {
         Line: AsRef<str>,
         Self: Sized,        
     {
+        use ::std::ops::Not as _;
         use ::futures::StreamExt as _;
 
-        static PLAYLIST_VIDEOS_REGEX: ::once_cell::sync::Lazy<::regex::Regex> = regex!(
+        static PLAYLIST_VIDEOS_REGEX: ::once_cell::sync::Lazy<::regex::Regex> = lazy_regex!(
             r"\[playlist-started:url\](?P<url>[^;]+)"
         );
 
-        static PLAYLIST_METADATA_REGEX: ::once_cell::sync::Lazy<::regex::Regex> = regex!(
+        static PLAYLIST_METADATA_REGEX: ::once_cell::sync::Lazy<::regex::Regex> = lazy_regex!(
             r"\[playlist-started:metadata\](?P<id>[^;]+);(?P<title>[^;]+);(?P<url>[^;]+)"
         );
 
@@ -923,9 +950,9 @@ impl FromYtdlpLines for PlaylistDownloadStartedEventPayload {
                     url: parse_attr(&captures["url"])?,
                     id: parse_attr(&captures["id"])?,
                     metadata: PlaylistMetadata {
-                        title: parse_attr(&captures["title"])?,
+                        title: parse_attr(&captures["title"]),
                     },
-                    videos,
+                    videos: videos.is_empty().not().then_some(videos),
                 };
 
                 return Some(Self { playlist })
@@ -936,15 +963,12 @@ impl FromYtdlpLines for PlaylistDownloadStartedEventPayload {
     }
 }
 
-fn parse_multivalued_attr(string: &str) -> Vec<MaybeOwnedString> {
-    match parse_attr(string) {
-        Some(attrs) => attrs
-            .split(',')
-            .map(normalize)
-            .map(|attr| attr.to_owned().into())
-            .collect(),
-        None => Vec::new(),
-    }
+fn parse_multivalued_attr(string: &str) -> Option<Vec<MaybeOwnedString>> {
+    Some(parse_attr(string)?
+        .split(',')
+        .map(normalize)
+        .map(|attr| attr.to_owned().into())
+        .collect())
 }
 
 fn parse_attr(string: &str) -> Option<MaybeOwnedString> {
@@ -978,6 +1002,7 @@ impl MetadataWriter for Id3MetadataWriter {
 
     async fn write_playlist(self: ::std::sync::Arc<Self>, playlist: &ResolvedPlaylist) -> Fallible<()> {
         use ::rayon::iter::ParallelIterator as _;
+        use ::rayon::iter::IntoParallelIterator as _;
 
         playlist.videos
             .as_deref()

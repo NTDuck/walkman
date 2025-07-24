@@ -2,7 +2,8 @@ pub(crate) mod utils;
 
 use infrastructures::DownloadPlaylistView;
 use ::infrastructures::DownloadVideoView;
-use ::infrastructures::Id3PlaylistAsAlbumMetadataWriter;
+use infrastructures::Id3MetadataWriter;
+use infrastructures::Id3MetadataWriterConfigurations;
 use infrastructures::TokioCommandExecutor;
 use infrastructures::UuidGenerator;
 use ::infrastructures::YtdlpDownloader;
@@ -25,7 +26,9 @@ async fn main() -> Fallible<()> {
         ::std::sync::Arc::new(UuidGenerator::new()),
         YtdlpConfigurations { workers: 4, cooldown: ::std::time::Duration::from_millis(1000) },
     ));
-    let metadata_writer = ::std::sync::Arc::new(Id3PlaylistAsAlbumMetadataWriter::new());
+    let metadata_writer = ::std::sync::Arc::new(Id3MetadataWriter::new(
+        Id3MetadataWriterConfigurations { playlist_as_album: true },
+    ));
 
     let download_video_interactor = ::std::sync::Arc::new(DownloadVideoInteractor::new(download_video_view.clone(), downloader.clone(), metadata_writer.clone()));
     let download_playlist_interactor = ::std::sync::Arc::new(DownloadPlaylistInteractor::new(download_playlist_view.clone(), downloader.clone(), metadata_writer.clone()));
