@@ -229,13 +229,13 @@ impl<'event> Update<EventRef<'event, PlaylistDownloadStartedEventPayload>> for D
             .map_or(0, |videos| videos.len());
 
         self.playlist_progress_bar.set_length(length as u64);
+        self.playlist_progress_bar.set_message(format!("{}/{}", 0, length));
         self.playlist_progress_bar.println(format!("Downloading playlist: {}", title));
 
         Ok(())
     }
 }
 
-// TODO: blinking animation
 #[async_trait]
 impl<'event> Update<EventRef<'event, PlaylistDownloadProgressUpdatedEventPayload>> for DownloadPlaylistView {
     async fn update(self: ::std::sync::Arc<Self>, event: &EventRef<'event, PlaylistDownloadProgressUpdatedEventPayload>) -> Fallible<()> {
@@ -252,6 +252,8 @@ impl<'event> Update<EventRef<'event, PlaylistDownloadProgressUpdatedEventPayload
 impl<'event> Update<EventRef<'event, PlaylistDownloadCompletedEventPayload>> for DownloadPlaylistView {
     async fn update(self: ::std::sync::Arc<Self>, _: &EventRef<'event, PlaylistDownloadCompletedEventPayload>) -> Fallible<()> {
         use ::colored::Colorize as _;
+
+        println!("Completed");
 
         static PROGRESS_BAR_FINISH_STYLE: ::once_cell::sync::Lazy<::indicatif::ProgressStyle> = lazy_progress_style!("{prefix} {bar:50.green} {msg}");
 
@@ -284,7 +286,8 @@ impl<'event> Update<EventRef<'event, VideoDownloadStartedEventPayload>> for Down
         static PROGRESS_BAR_STYLE: ::once_cell::sync::Lazy<::indicatif::ProgressStyle> = lazy_progress_style!("{prefix} {bar:50} {msg}");
 
         let video_progress_bar = self.video_progress_bars.lock().await
-            .entry(event.metadata.worker_id.clone())
+            // .entry(event.metadata.worker_id.clone())
+            .entry(event.payload.video.id.clone())
             .or_insert({
                 let progress_bar = self.progress_bars.insert_before(&self.playlist_progress_bar, ::indicatif::ProgressBar::new(100));
 
@@ -588,7 +591,16 @@ where
                 let unresolved_videos_notify = ::std::sync::Arc::clone(&unresolved_videos_notify);
 
                 async move {
-                    while let Some(video) = unresolved_videos.lock().await.pop_front() {
+                    loop {
+                        let (video, is_last_worker_to_poll) = {
+                            let mut unresolved_videos = unresolved_videos.lock().await;
+                            let video = unresolved_videos.pop_front();
+                            let is_last_worker_to_poll = unresolved_videos.is_empty();
+                            (video, is_last_worker_to_poll)
+                        };
+
+                        let Some(video) = video else { break };
+
                         let (video_download_events, diagnostic_events) = ::std::sync::Arc::clone(&this).download_video(video.url.clone(), directory.clone()).await?;
 
                         ::tokio::try_join!(
@@ -648,11 +660,13 @@ where
                                     .map_err(::anyhow::Error::from)
                             },
                         )?;
+                        
+                        if is_last_worker_to_poll {
+                            unresolved_videos_notify.notify_one();
+                        }
 
                         ::tokio::time::sleep(this.configurations.cooldown).await;
                     }
-
-                    unresolved_videos_notify.notify_one();
 
                     Ok::<_, ::anyhow::Error>(())
                 }
@@ -1020,7 +1034,8 @@ impl Id3MetadataWriter {
             .as_deref()
             .map(|genres| tag.set_genre(genres.join(", ")));
 
-        tag.write_to_path(&video.path, ::id3::Version::Id3v23)?;
+        tag.write_to_path(&video.path, ::id3::Version::Id3v23)
+            .map_err(|err| { eprintln!("{}", err); err })?;
 
         Ok(())
     }

@@ -1,16 +1,21 @@
-use regex::Regex;
-
-fn update_percentage(message: &str, new_percent: u8) -> String {
-    // Matches optional spaces + 1-3 digits or ??, followed by "%  "
-    static RE: once_cell::sync::Lazy<Regex> = once_cell::sync::Lazy::new(|| {
-        Regex::new(r"^\s*(\d{1,3}|\?{2})%  ").unwrap()
-    });
-
-    RE.replace(message, format!("{:>3}%  ", new_percent)).into_owned()
-}
+use indicatif::{ProgressBar, ProgressStyle};
+use std::{thread, time::Duration};
 
 fn main() {
-    let msg = "100%  Cool Title";
-    let updated = update_percentage(msg, 42);
-    println!("{}", updated); // Output: " 42%  Cool Title"
+    let pb = ProgressBar::new(100);
+    let normal_style = ProgressStyle::with_template("{bar:40.cyan/blue} {pos:>3}/{len}")
+        .unwrap();
+    let blink_style = ProgressStyle::with_template("{bar:40.green/white} {pos:>3}/{len}")
+        .unwrap();
+
+    for i in 0..=100 {
+        pb.set_style(blink_style.clone()); // Blink color
+        pb.set_position(i);
+        thread::sleep(Duration::from_millis(1));
+        pb.set_style(normal_style.clone()); // Revert
+        pb.tick();
+        thread::sleep(Duration::from_millis(100)); // Optional: makes blink noticeable
+    }
+
+    pb.finish_with_message("Done");
 }
