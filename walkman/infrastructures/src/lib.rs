@@ -241,9 +241,7 @@ impl<'event> Update<EventRef<'event, PlaylistDownloadProgressUpdatedEventPayload
     async fn update(self: ::std::sync::Arc<Self>, event: &EventRef<'event, PlaylistDownloadProgressUpdatedEventPayload>) -> Fallible<()> {
         let PlaylistDownloadProgressUpdatedEventPayload { completed, total, .. } = &event.payload;
 
-        let percentage = *completed as f64 / *total as f64 * 100.0;
-
-        self.playlist_progress_bar.set_position(percentage as u64);
+        self.playlist_progress_bar.set_position(*completed as u64);
         self.playlist_progress_bar.set_message(format!("{}/{}", completed, total));
 
         Ok(())
@@ -285,13 +283,10 @@ impl<'event> Update<EventRef<'event, VideoDownloadStartedEventPayload>> for Down
 
         static PROGRESS_BAR_STYLE: ::once_cell::sync::Lazy<::indicatif::ProgressStyle> = lazy_progress_style!("{prefix} {bar:50} {msg}");
 
-        println!("{:#?}", event);
-
         let video_progress_bar = self.video_progress_bars.lock().await
             .entry(event.metadata.worker_id.clone())
             .or_insert({
                 let progress_bar = self.progress_bars.insert_before(&self.playlist_progress_bar, ::indicatif::ProgressBar::new(100));
-                println!("new worker id: {}", event.metadata.worker_id);
 
                 progress_bar.disable_steady_tick();
 
@@ -576,7 +571,6 @@ where
         let unresolved_videos_notify = ::std::sync::Arc::new(::tokio::sync::Notify::new());
         
         (0..self.configurations.workers).for_each(|_| {
-            let worker_id = ::std::sync::Arc::clone(&self.id_generator).generate();
             ::tokio::spawn({
                 let this = ::std::sync::Arc::clone(&self);
 
@@ -584,7 +578,7 @@ where
                 let video_download_events_tx = video_download_events_tx.clone();
                 let diagnostic_events_tx = diagnostic_events_tx.clone();
 
-                // let worker_id = ::std::sync::Arc::clone(&this.id_generator).generate();
+                let worker_id = ::std::sync::Arc::clone(&this.id_generator).generate();
                 let correlation_id = correlation_id.clone();
 
                 let directory = directory.clone();
@@ -600,6 +594,11 @@ where
                         ::tokio::try_join!(
                             async {
                                 video_download_events
+                                    .map(|event| event.with_metadata(EventMetadata {
+                                        worker_id: worker_id.clone(),
+                                        correlation_id: correlation_id.clone(),
+                                        timestamp: ::std::time::SystemTime::now(),
+                                    }))
                                     .map(Ok)
                                     .try_for_each(|event| async {
                                         match event.payload {

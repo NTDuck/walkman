@@ -21,6 +21,13 @@ pub mod events {
     }
     
     impl<Payload> Event<Payload> {
+        pub fn with_metadata(self, metadata: EventMetadata) -> Self {
+            Self {
+                metadata,
+                ..self
+            }
+        }
+        
         pub fn with_payload<'this, OtherPayload>(&'this self, payload: &'this OtherPayload) -> EventRef<'this, OtherPayload> {
             EventRef {
                 metadata: &self.metadata,
