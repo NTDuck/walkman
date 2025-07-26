@@ -45,8 +45,8 @@ pub struct Channel {
 
     pub id: ChannelId,
     pub metadata: ChannelMetadata,
-    pub playlists: Option<Vec<Playlist>>,
     pub videos: Option<Vec<Video>>,
+    pub playlists: Option<Vec<Playlist>>,
 }
 
 pub type ChannelId = MaybeOwnedString;

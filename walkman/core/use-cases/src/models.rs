@@ -1,100 +1,62 @@
 pub mod events {
+    use domain::VideoId;
+
     use crate::{models::descriptors::{PartiallyResolvedPlaylist, PartiallyResolvedVideo, ResolvedPlaylist, ResolvedVideo}, utils::aliases::MaybeOwnedString};
 
     #[derive(Debug, Clone)]
-    pub struct Event<Payload> {
-        pub metadata: EventMetadata,
-        pub payload: Payload,
+    pub enum VideoDownloadEvent {
+        Started(VideoDownloadStartedEvent),
+        ProgressUpdated(VideoDownloadProgressUpdatedEvent),
+        Completed(VideoDownloadCompletedEvent),
     }
 
     #[derive(Debug, Clone)]
-    pub struct EventMetadata {
-        pub worker_id: MaybeOwnedString,
-        pub correlation_id: MaybeOwnedString,
-        pub timestamp: ::std::time::SystemTime,
-    }
-
-    #[derive(Debug, Clone)]
-    pub struct EventRef<'this, Payload> {
-        pub metadata: &'this EventMetadata,
-        pub payload: &'this Payload,
-    }
-    
-    impl<Payload> Event<Payload> {
-        pub fn with_metadata(self, metadata: EventMetadata) -> Self {
-            Self {
-                metadata,
-                ..self
-            }
-        }
-        
-        pub fn with_payload<'this, OtherPayload>(&'this self, payload: &'this OtherPayload) -> EventRef<'this, OtherPayload> {
-            EventRef {
-                metadata: &self.metadata,
-                payload,
-            }
-        }
-    }
-
-    pub type VideoDownloadEvent = Event<VideoDownloadEventPayload>;
-
-    #[derive(Debug, Clone)]
-    pub enum VideoDownloadEventPayload {
-        Started(VideoDownloadStartedEventPayload),
-        ProgressUpdated(VideoDownloadProgressUpdatedEventPayload),
-        Completed(VideoDownloadCompletedEventPayload),
-    }
-
-    #[derive(Debug, Clone)]
-    pub struct VideoDownloadStartedEventPayload {
+    pub struct VideoDownloadStartedEvent {
         pub video: PartiallyResolvedVideo,
     }
 
     #[derive(Debug, Clone)]
-    pub struct VideoDownloadProgressUpdatedEventPayload {
-        pub percentage: u8,
+    pub struct VideoDownloadProgressUpdatedEvent {
+        pub id: VideoId,
 
-        pub eta: MaybeOwnedString,
-        pub size: MaybeOwnedString,
-        pub speed: MaybeOwnedString,
+        pub eta: ::std::time::Duration,
+        pub elapsed: ::std::time::Duration,
+
+        pub downloaded_bytes: u64,
+        pub total_bytes: u64,
+        pub bytes_per_second: u64,
     }
 
     #[derive(Debug, Clone)]
-    pub struct VideoDownloadCompletedEventPayload {
+    pub struct VideoDownloadCompletedEvent {
         pub video: ResolvedVideo,
     }
 
-    pub type PlaylistDownloadEvent = Event<PlaylistDownloadEventPayload>;
-
     #[derive(Debug, Clone)]
-    pub enum PlaylistDownloadEventPayload {
-        Started(PlaylistDownloadStartedEventPayload),
-        ProgressUpdated(PlaylistDownloadProgressUpdatedEventPayload),
-        Completed(PlaylistDownloadCompletedEventPayload),
+    pub enum PlaylistDownloadEvent {
+        Started(PlaylistDownloadStartedEvent),
+        Completed(PlaylistDownloadCompletedEvent),
     }
 
     #[derive(Debug, Clone)]
-    pub struct PlaylistDownloadStartedEventPayload {
+    pub struct PlaylistDownloadStartedEvent {
         pub playlist: PartiallyResolvedPlaylist,
     }
 
-    #[derive(Debug, Clone)]
-    pub struct PlaylistDownloadProgressUpdatedEventPayload {
+    pub struct PlaylistDownloadProgressUpdatedEvent {
         pub video: ResolvedVideo,
 
-        pub completed: usize,
-        pub total: usize,
+        pub completed_videos: u64,
+        pub total_videos: u64,
     }
 
     #[derive(Debug, Clone)]
-    pub struct PlaylistDownloadCompletedEventPayload {
+    pub struct PlaylistDownloadCompletedEvent {
         pub playlist: ResolvedPlaylist,
     }
 
-    pub type DiagnosticEvent = Event<DiagnosticEventPayload>;
-
     #[derive(Debug, Clone)]
-    pub struct DiagnosticEventPayload {
+    pub struct DiagnosticEvent {
         pub level: DiagnosticLevel,
         pub message: MaybeOwnedString,
     }

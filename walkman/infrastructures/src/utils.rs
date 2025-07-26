@@ -52,13 +52,6 @@ pub mod macros {
     }
 
     #[macro_export]
-    macro_rules! lazy_regex {
-        ($pattern:expr) => {
-            ::once_cell::sync::Lazy::new(|| ::regex::Regex::new($pattern).unwrap())
-        };
-    }
-
-    #[macro_export]
     macro_rules! lazy_color {
         ($color:expr) => {
             ::once_cell::sync::Lazy::new(|| {

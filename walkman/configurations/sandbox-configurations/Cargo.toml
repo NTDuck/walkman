@@ -19,6 +19,8 @@ tokio = { version = "*", features = ["full"] }
 anyhow = "*"
 futures = "*"
 regex = "*"
+bytesize = "*"
+humantime = "*"
 
 [lints]
 workspace = true

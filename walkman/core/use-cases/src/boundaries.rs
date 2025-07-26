@@ -4,7 +4,6 @@ use crate::models::events::DiagnosticEvent;
 use crate::models::events::PlaylistDownloadEvent;
 use crate::models::events::VideoDownloadEvent;
 use crate::utils::aliases::Fallible;
-use crate::utils::aliases::MaybeOwnedPath;
 use crate::utils::aliases::MaybeOwnedString;
 
 pub trait DownloadVideoInputBoundary: Accept<DownloadVideoRequestModel> {}
@@ -17,7 +16,6 @@ where
 
 pub struct DownloadVideoRequestModel {
     pub url: MaybeOwnedString,
-    pub directory: MaybeOwnedPath,
 }
 
 pub trait DownloadPlaylistInputBoundary: Accept<DownloadPlaylistRequestModel> {}
@@ -30,7 +28,6 @@ where
 
 pub struct DownloadPlaylistRequestModel {
     pub url: MaybeOwnedString,
-    pub directory: MaybeOwnedPath,
 }
 
 pub trait DownloadVideoOutputBoundary: Activate + Update<VideoDownloadEvent> + Update<DiagnosticEvent> {}

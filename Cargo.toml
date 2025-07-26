@@ -21,6 +21,7 @@ async-trait = "0.1.88"
 derive-new = "0.7.0"
 futures = "0.3.31"
 tokio = "1.46.1"
+tokio-stream = "0.1.17"
 rayon = "1.10.0"
 
 # Crates that we choose to marry

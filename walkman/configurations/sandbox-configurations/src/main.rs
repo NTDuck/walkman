@@ -1,21 +1,14 @@
-use indicatif::{ProgressBar, ProgressStyle};
-use std::{thread, time::Duration};
+use std::time::Duration;
+
+use bytesize::ByteSize;
+use humantime::*;
 
 fn main() {
-    let pb = ProgressBar::new(100);
-    let normal_style = ProgressStyle::with_template("{bar:40.cyan/blue} {pos:>3}/{len}")
-        .unwrap();
-    let blink_style = ProgressStyle::with_template("{bar:40.green/white} {pos:>3}/{len}")
-        .unwrap();
+    println!("{} of {}", ByteSize::b(1024), ByteSize::b(3736442));
+    println!("{}/s", ByteSize::b(511976.0753367505 as u64));
+    println!("{}", 1024 as f64 / 3736442 as f64);
 
-    for i in 0..=100 {
-        pb.set_style(blink_style.clone()); // Blink color
-        pb.set_position(i);
-        thread::sleep(Duration::from_millis(1));
-        pb.set_style(normal_style.clone()); // Revert
-        pb.tick();
-        thread::sleep(Duration::from_millis(100)); // Optional: makes blink noticeable
-    }
-
-    pb.finish_with_message("Done");
+    let seconds = 0.18876147270202637_f64;
+    let duration = Duration::from_secs_f64(seconds);
+    println!("{}", format_duration(duration));
 }
