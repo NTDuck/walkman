@@ -1,5 +1,5 @@
 pub mod events {
-    use domain::VideoId;
+    use ::domain::VideoId;
 
     use crate::{models::descriptors::{PartiallyResolvedPlaylist, PartiallyResolvedVideo, ResolvedPlaylist, ResolvedVideo}, utils::aliases::MaybeOwnedString};
 

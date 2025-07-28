@@ -5,13 +5,13 @@ use ::async_trait::async_trait;
 use ::derive_new::new;
 use ::domain::PlaylistMetadata;
 use ::domain::VideoMetadata;
-use use_cases::gateways::PlaylistDownloader;
-use use_cases::gateways::VideoDownloader;
+use ::use_cases::gateways::PlaylistDownloader;
+use ::use_cases::gateways::VideoDownloader;
 use ::use_cases::models::descriptors::PartiallyResolvedPlaylist;
 use ::use_cases::models::descriptors::PartiallyResolvedVideo;
 use ::use_cases::models::descriptors::ResolvedPlaylist;
 use ::use_cases::models::descriptors::ResolvedVideo;
-use use_cases::models::descriptors::UnresolvedPlaylist;
+use ::use_cases::models::descriptors::UnresolvedPlaylist;
 use ::use_cases::models::descriptors::UnresolvedVideo;
 use ::use_cases::models::events::DiagnosticEvent;
 use ::use_cases::models::events::DiagnosticLevel;
@@ -31,78 +31,78 @@ use crate::utils::aliases::MaybeOwnedString;
 use crate::utils::aliases::MaybeOwnedVec;
 use crate::utils::extensions::OptionExt;
 
-// #[derive(new)]
-// pub struct YtdlpDownloader {
-//     configurations: YtdlpConfigurations,
-// }
+#[derive(new)]
+pub struct YtdlpDownloader {
+    configurations: YtdlpConfigurations,
+}
 
-// pub struct YtdlpConfigurations {
-//     pub directory: MaybeOwnedPath,
-//     pub workers: u64,
-//     pub cooldown: ::std::time::Duration,
-// }
+pub struct YtdlpConfigurations {
+    pub directory: MaybeOwnedPath,
+    pub workers: u64,
+    pub cooldown: ::std::time::Duration,
+}
 
-// #[async_trait]
-// impl VideoDownloader for YtdlpDownloader {
-//     async fn download(
-//         self: ::std::sync::Arc<Self>, video: UnresolvedVideo,
-//     ) -> Fallible<(BoxedStream<VideoDownloadEvent>, BoxedStream<DiagnosticEvent>)> {
-//         use ::futures::StreamExt as _;
-//         use ::futures::TryStreamExt as _;
+#[async_trait]
+impl VideoDownloader for YtdlpDownloader {
+    async fn download(
+        self: ::std::sync::Arc<Self>, video: UnresolvedVideo,
+    ) -> Fallible<(BoxedStream<VideoDownloadEvent>, BoxedStream<DiagnosticEvent>)> {
+        use ::futures::StreamExt as _;
+        use ::futures::TryStreamExt as _;
 
-//         let (video_download_events_tx, video_download_events_rx) = ::tokio::sync::mpsc::unbounded_channel();
-//         let (diagnostic_events_tx, diagnostic_events_rx) = ::tokio::sync::mpsc::unbounded_channel();
+        let (video_download_events_tx, video_download_events_rx) = ::tokio::sync::mpsc::unbounded_channel();
+        let (diagnostic_events_tx, diagnostic_events_rx) = ::tokio::sync::mpsc::unbounded_channel();
 
-//         #[rustfmt::skip]
-//         let (stdout, stderr) = ::std::sync::Arc::clone(&self.command_executor).execute("yt-dlp", [
-//             &*video.url,
-//             "--paths", &self.configurations.directory.to_str().some()?,
-//             "--format", "bestaudio",
-//             "--extract-audio",
-//             "--audio-format", "mp3",
-//             "--output", "%(title)s.%(ext)s",
-//             "--quiet",
-//             "--newline",
-//             "--abort-on-error",
-//             "--no-playlist",
-//             "--color", "no_color",
-//             "--force-overwrites",
-//             "--progress",
-//             "--print", "before_dl:[video-started]%(webpage_url)s;%(id)s;%(title)s;%(album)s;%(artist)s;%(genre)s",
-//             "--progress-template", "[video-downloading]%(progress._percent_str)s;%(progress._eta_str)s;%(progress._total_bytes_str)s;%(progress._speed_str)s",
-//             "--print", "after_move:[video-completed]%(webpage_url)s;%(id)s;%(title)s;%(album)s;%(artist)s;%(genre)s;%(filepath)s",
-//         ])?;
+        #[rustfmt::skip]
+        let (stdout, stderr) = TokioCommandExecutor::execute("yt-dlp", [
+            &*video.url,
+            "--paths", &self.configurations.directory.to_str().ok()?,
+            "--format", "bestaudio",
+            "--extract-audio",
+            "--audio-format", "mp3",
+            "--output", "%(title)s.%(ext)s",
+            "--quiet",
+            "--newline",
+            "--abort-on-error",
+            "--no-playlist",
+            "--color", "no_color",
+            "--force-overwrites",
+            "--progress",
+            "--print", "before_dl:[video-started]%(webpage_url)s;%(id)s;%(title)s;%(album)s;%(artist)s;%(genre)s",
+            "--progress-template", "[video-downloading]%(info.id)s;%(progress.eta)s;%(progress.elapsed)s;%(progress.downloaded_bytes)s;%(progress.total_bytes)s;%(progress.speed)s",
+            "--print", "after_move:[video-completed]%(webpage_url)s;%(id)s;%(title)s;%(album)s;%(artist)s;%(genre)s;%(filepath)s",
+        ])?;
 
-//         ::tokio::spawn({
-//             async move {
-//                 ::tokio::try_join!(
-//                     async {
-//                         stdout
-//                             .filter_map(|line| async { VideoDownloadEvent::from_line(line) })
-//                             .map(Ok)
-//                             .try_for_each(|event| async { video_download_events_tx.send(event) })
-//                             .await
-//                             .map_err(::anyhow::Error::from)
-//                     },
+        ::tokio::spawn({
+            async move {
+                ::tokio::try_join!(
+                    async {
+                        stdout
+                            .filter_map(|line| async { VideoDownloadEvent::from_line(line) })
+                            .map(Ok)
+                            .try_for_each(|event| async { video_download_events_tx.send(event) })
+                            .await
+                            .map_err(::anyhow::Error::from)
+                    },
                     
-//                     async {
-//                         stderr
-//                             .filter_map(|line| async { DiagnosticEvent::from_line(line) })
-//                             .map(Ok)
-//                             .try_for_each(|event| async { diagnostic_events_tx.send(event) })
-//                             .await
-//                             .map_err(::anyhow::Error::from)
-//                     },
-//                 )
-//             }
-//         });
+                    async {
+                        stderr
+                            .filter_map(|line| async { DiagnosticEvent::from_line(line) })
+                            .map(Ok)
+                            .try_for_each(|event| async { diagnostic_events_tx.send(event) })
+                            .await
+                            .map_err(::anyhow::Error::from)
+                    },
+                )
+            }
+        });
 
-//         Ok((
-//             ::std::boxed::Box::pin(::tokio_stream::wrappers::UnboundedReceiverStream::new(video_download_events_rx)),
-//             ::std::boxed::Box::pin(::tokio_stream::wrappers::UnboundedReceiverStream::new(diagnostic_events_rx)),
-//         ))
-//     }
-// }
+        Ok((
+            ::std::boxed::Box::pin(::tokio_stream::wrappers::UnboundedReceiverStream::new(video_download_events_rx)),
+            ::std::boxed::Box::pin(::tokio_stream::wrappers::UnboundedReceiverStream::new(diagnostic_events_rx)),
+        ))
+    }
+}
 
 // #[async_trait]
 // impl<CommandExecutorImpl> PlaylistDownloader for YtdlpDownloader<CommandExecutorImpl>
