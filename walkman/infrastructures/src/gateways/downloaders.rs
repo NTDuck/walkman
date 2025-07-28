@@ -418,7 +418,7 @@ impl FromLine for VideoDownloadProgressUpdatedEvent {
         let elapsed = ::std::time::Duration::try_from_secs_f64(elapsed.parse().ok()?).ok()?;
         let downloaded_bytes = downloaded_bytes.parse().ok()?;
         let total_bytes = total_bytes.parse().ok()?;
-        let bytes_per_second = bytes_per_second.parse().ok()?;
+        let bytes_per_second = bytes_per_second.parse::<f64>().ok()?.floor() as u64;
 
         Some(Self {
             id,

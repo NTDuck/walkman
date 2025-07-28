@@ -1,13 +1,9 @@
 pub(crate) mod utils;
 
-use ::infrastructures::DownloadPlaylistView;
-use ::infrastructures::DownloadVideoView;
-use ::infrastructures::Id3MetadataWriter;
-use ::infrastructures::Id3MetadataWriterConfigurations;
-use ::infrastructures::TokioCommandExecutor;
-use ::infrastructures::UuidGenerator;
-use ::infrastructures::YtdlpDownloader;
-use ::infrastructures::YtdlpConfigurations;
+use infrastructures::boundaries::DownloadPlaylistView;
+use infrastructures::boundaries::DownloadVideoView;
+use infrastructures::gateways::downloaders::YtdlpConfigurations;
+use infrastructures::gateways::downloaders::YtdlpDownloader;
 use ::use_cases::boundaries::Accept;
 use ::use_cases::boundaries::DownloadPlaylistRequestModel;
 use ::use_cases::boundaries::DownloadVideoRequestModel;
@@ -22,10 +18,7 @@ async fn main() -> Fallible<()> {
     let download_playlist_view = ::std::sync::Arc::new(DownloadPlaylistView::new()?);
 
     let downloader = ::std::sync::Arc::new(YtdlpDownloader::new(
-        ::std::sync::Arc::new(TokioCommandExecutor::new()),
-        ::std::sync::Arc::new(UuidGenerator::new()),
-        YtdlpConfigurations { workers: 4, cooldown: ::std::time::Duration::from_millis(1000) },
-        // YtdlpConfigurations { workers: ::num_cpus::get(), cooldown: ::std::time::Duration::from_millis(1000) },
+        YtdlpConfigurations { workers: 4, cooldown: ::std::time::Duration::from_millis(0) },
     ));
     let metadata_writer = ::std::sync::Arc::new(Id3MetadataWriter::new(
         Id3MetadataWriterConfigurations { playlist_as_album: true },
