@@ -107,7 +107,7 @@ use crate::utils::extensions::OptionExt;
 // #[async_trait]
 // impl<CommandExecutorImpl> PlaylistDownloader for YtdlpDownloader<CommandExecutorImpl>
 // where
-//     CommandExecutorImpl: CommandExecutor + 'static,
+//     CommandExecutorImpl: CommandExecutor'static,
 // {
 //     async fn download(
 //         self: ::std::sync::Arc<Self>, playlist: UnresolvedPlaylist,
@@ -340,97 +340,102 @@ use crate::utils::extensions::OptionExt;
 //     }
 // }
 
-// trait CommandExecutor {
-//     type Stdout: ::futures::Stream<Item = MaybeOwnedString>;
-//     type Stderr: ::futures::Stream<Item = MaybeOwnedString>;
+trait CommandExecutor {
+    type Stdout: ::futures::Stream<Item = MaybeOwnedString>;
+    type Stderr: ::futures::Stream<Item = MaybeOwnedString>;
 
-//     fn execute<Program, Args>(program: Program, args: Args) -> Fallible<(Self::Stdout, Self::Stderr)>
-//     where
-//         Program: AsRef<::std::ffi::OsStr>,
-//         Args: IntoIterator,
-//         Args::Item: AsRef<::std::ffi::OsStr>;
-// }
-
-// struct TokioCommandExecutor;
-
-// impl CommandExecutor for TokioCommandExecutor {
-//     type Stdout = ::tokio_stream::wrappers::UnboundedReceiverStream<MaybeOwnedString>;
-//     type Stderr = ::tokio_stream::wrappers::UnboundedReceiverStream<MaybeOwnedString>;
-
-//     fn execute<Program, Args>(program: Program, args: Args) -> Fallible<(Self::Stdout, Self::Stderr)>
-//     where
-//         Program: AsRef<::std::ffi::OsStr>,
-//         Args: IntoIterator,
-//         Args::Item: AsRef<::std::ffi::OsStr>,
-//     {
-//         use ::tokio::io::AsyncBufReadExt as _;
-//         use ::futures::StreamExt as _;
-//         use ::futures::TryStreamExt as _;
-
-//         let (stdout_tx, stdout_rx) = ::tokio::sync::mpsc::unbounded_channel();
-//         let (stderr_tx, stderr_rx) = ::tokio::sync::mpsc::unbounded_channel();
-
-//         let mut process = ::tokio::process::Command::new(program)
-//             .args(args)
-//             .stdout(::std::process::Stdio::piped())
-//             .stderr(::std::process::Stdio::piped())
-//             .spawn()?;
-
-//         let stdout = process.stdout.take().some()?;
-//         let stderr = process.stderr.take().some()?;
-
-//         ::tokio::task::spawn(async move {
-//             let lines = ::tokio::io::BufReader::new(stdout).lines();
-            
-//             ::tokio_stream::wrappers::LinesStream::new(lines)
-//                 .filter_map(|line| async move { line.ok() })
-//                 .map(|line| MaybeOwnedString::from(line))
-//                 .map(Ok)
-//                 .try_for_each(|line| async { stdout_tx.send(line) })
-//                 .await;
-//         });
-
-//         ::tokio::task::spawn(async move {
-//             let lines = ::tokio::io::BufReader::new(stderr).lines();
-            
-//             ::tokio_stream::wrappers::LinesStream::new(lines)
-//                 .filter_map(|line| async move { line.ok() })
-//                 .map(|line| MaybeOwnedString::from(line))
-//                 .map(Ok)
-//                 .try_for_each(|line| async { stderr_tx.send(line) })
-//                 .await;
-//         });
-
-//         Ok((
-//             ::tokio_stream::wrappers::UnboundedReceiverStream::new(stdout_rx),
-//             ::tokio_stream::wrappers::UnboundedReceiverStream::new(stderr_rx),
-//         ))
-//     }
-// }
-
-trait FromYtdlpLine<'a> {
-    fn from_line(line: &'a str) -> Option<Self>
+    fn execute<Program, Args>(program: Program, args: Args) -> Fallible<(Self::Stdout, Self::Stderr)>
     where
-        Self: Sized + 'a;
+        Program: AsRef<::std::ffi::OsStr>,
+        Args: IntoIterator,
+        Args::Item: AsRef<::std::ffi::OsStr>;
 }
 
-impl<'a> FromYtdlpLine<'a> for VideoDownloadEvent<'a> {
-    fn from_line(line: &'a str) -> Option<Self>
+struct TokioCommandExecutor;
+
+impl CommandExecutor for TokioCommandExecutor {
+    type Stdout = ::tokio_stream::wrappers::UnboundedReceiverStream<MaybeOwnedString>;
+    type Stderr = ::tokio_stream::wrappers::UnboundedReceiverStream<MaybeOwnedString>;
+
+    fn execute<Program, Args>(program: Program, args: Args) -> Fallible<(Self::Stdout, Self::Stderr)>
     where
-        Self: Sized + 'a,
+        Program: AsRef<::std::ffi::OsStr>,
+        Args: IntoIterator,
+        Args::Item: AsRef<::std::ffi::OsStr>,
     {
+        use ::tokio::io::AsyncBufReadExt as _;
+        use ::futures::StreamExt as _;
+        use ::futures::TryStreamExt as _;
+
+        let (stdout_tx, stdout_rx) = ::tokio::sync::mpsc::unbounded_channel();
+        let (stderr_tx, stderr_rx) = ::tokio::sync::mpsc::unbounded_channel();
+
+        let mut process = ::tokio::process::Command::new(program)
+            .args(args)
+            .stdout(::std::process::Stdio::piped())
+            .stderr(::std::process::Stdio::piped())
+            .spawn()?;
+
+        let stdout = process.stdout.take().ok()?;
+        let stderr = process.stderr.take().ok()?;
+
+        ::tokio::task::spawn(async move {
+            let lines = ::tokio::io::BufReader::new(stdout).lines();
+            
+            ::tokio_stream::wrappers::LinesStream::new(lines)
+                .filter_map(|line| async move { line.ok() })
+                .map(|line| line.to_owned().into())
+                .map(Ok)
+                .try_for_each(|line| async { stdout_tx.send(line) })
+                .await
+        });
+
+        ::tokio::task::spawn(async move {
+            let lines = ::tokio::io::BufReader::new(stderr).lines();
+            
+            ::tokio_stream::wrappers::LinesStream::new(lines)
+                .filter_map(|line| async move { line.ok() })
+                .map(|line| line.to_owned().into())
+                .map(Ok)
+                .try_for_each(|line| async { stderr_tx.send(line) })
+                .await
+        });
+
+        Ok((
+            ::tokio_stream::wrappers::UnboundedReceiverStream::new(stdout_rx),
+            ::tokio_stream::wrappers::UnboundedReceiverStream::new(stderr_rx),
+        ))
+    }
+}
+
+trait FromLine {
+    fn from_line<Line>(line: Line) -> Option<Self>
+    where
+        Line: AsRef<str>,
+        Self: Sized;
+}
+
+impl FromLine for VideoDownloadEvent {
+    fn from_line<Line>(line: Line) -> Option<Self>
+    where
+        Line: AsRef<str>,
+        Self: Sized,
+    {
+        let line = line.as_ref();
+
         VideoDownloadProgressUpdatedEvent::from_line(line).map(Self::ProgressUpdated)
             .or(VideoDownloadStartedEvent::from_line(line).map(Self::Started))
             .or(VideoDownloadCompletedEvent::from_line(line).map(Self::Completed))
     }
 }
 
-impl<'a> FromYtdlpLine<'a> for VideoDownloadStartedEvent<'a> {
-    fn from_line(line: &'a str) -> Option<Self>
+impl FromLine for VideoDownloadStartedEvent {
+    fn from_line<Line>(line: Line) -> Option<Self>
     where
-        Self: Sized + 'a,
+        Line: AsRef<str>,
+        Self: Sized,
     {
-        let mut attrs = line.strip_prefix("[video-started]")?.split(';');
+        let mut attrs = line.as_ref().strip_prefix("[video-started]")?.split(';');
 
         let url = parse_attr(attrs.next()?)?;
         let id = parse_attr(attrs.next()?)?;
@@ -454,12 +459,13 @@ impl<'a> FromYtdlpLine<'a> for VideoDownloadStartedEvent<'a> {
     }
 }
 
-impl<'a> FromYtdlpLine<'a> for VideoDownloadProgressUpdatedEvent<'a> {
-    fn from_line(line: &'a str) -> Option<Self>
+impl FromLine for VideoDownloadProgressUpdatedEvent {
+    fn from_line<Line>(line: Line) -> Option<Self>
     where
-        Self: Sized + 'a,
+        Line: AsRef<str>,
+        Self: Sized,
     {
-        let mut attrs = line.strip_prefix("[video-downloading]")?.split(';');
+        let mut attrs = line.as_ref().strip_prefix("[video-downloading]")?.split(';');
 
         let id = parse_attr(attrs.next()?)?;
         let eta = parse_attr(attrs.next()?)?;
@@ -485,12 +491,13 @@ impl<'a> FromYtdlpLine<'a> for VideoDownloadProgressUpdatedEvent<'a> {
     }
 }
 
-impl<'a> FromYtdlpLine<'a> for VideoDownloadCompletedEvent<'a> {
-    fn from_line(line: &'a str) -> Option<Self>
+impl FromLine for VideoDownloadCompletedEvent {
+    fn from_line<Line>(line: Line) -> Option<Self>
     where
-        Self: Sized + 'a,
+        Line: AsRef<str>,
+        Self: Sized,
     {
-        let mut attrs = line.strip_prefix("[video-completed]")?.split(';');
+        let mut attrs = line.as_ref().strip_prefix("[video-completed]")?.split(';');
 
         let url = parse_attr(attrs.next()?)?;
         let id = parse_attr(attrs.next()?)?;
@@ -501,19 +508,14 @@ impl<'a> FromYtdlpLine<'a> for VideoDownloadCompletedEvent<'a> {
         let path = parse_attr(attrs.next()?)?;
 
         let path = match path {
-            MaybeOwnedString::Borrowed(path) => MaybeOwnedPath::Borrowed(::std::path::Path::new(path)),
-            MaybeOwnedString::Owned(path) => MaybeOwnedPath::Owned(::std::path::PathBuf::from(path)),
+            MaybeOwnedString::Borrowed(path) => MaybeOwnedPath::Borrowed(path.as_ref()),
+            MaybeOwnedString::Owned(path) => MaybeOwnedPath::Owned(path.into()),
         };
 
         let video = ResolvedVideo {
             url,
             id,
-            metadata: VideoMetadata {
-                title,
-                album,
-                artists,
-                genres,
-            },
+            metadata: VideoMetadata { title, album, artists, genres },
             path,
         };
 
@@ -521,12 +523,13 @@ impl<'a> FromYtdlpLine<'a> for VideoDownloadCompletedEvent<'a> {
     }
 }
 
-impl<'a> FromYtdlpLine<'a> for DiagnosticEvent<'a> {
-    fn from_line(line: &'a str) -> Option<Self>
+impl FromLine for DiagnosticEvent {
+    fn from_line<Line>(line: Line) -> Option<Self>
     where
-        Self: Sized + 'a,
+        Line: AsRef<str>,
+        Self: Sized,
     {
-        let mut attrs = line.split(':');
+        let mut attrs = line.as_ref().split(':');
 
         let level = parse_attr(attrs.next()?)?;
         let message = parse_attr(attrs.next()?)?;
@@ -537,27 +540,26 @@ impl<'a> FromYtdlpLine<'a> for DiagnosticEvent<'a> {
             _ => return None,
         };
 
-        Some(Self {
-            level,
-            message,
-        })
+        Some(Self { level, message })
     }    
 }
 
 #[async_trait]
-trait FromYtdlpLines<'a>: Send + Sync {
-    async fn from_lines<Lines>(lines: Lines) -> Option<Self>
+trait FromLines: Send + Sync {
+    async fn from_lines<Lines, Line>(lines: Lines) -> Option<Self>
     where
-        Lines: ::futures::Stream<Item = &'a str> + ::core::marker::Send,
-        Self: Sized + 'a;
+        Lines: ::futures::Stream<Item = Line> + ::core::marker::Send,
+        Line: AsRef<str>,
+        Self: Sized;
 }
 
 #[async_trait]
-impl<'a> FromYtdlpLines<'a> for PlaylistDownloadStartedEvent<'a> {
-    async fn from_lines<Lines>(lines: Lines) -> Option<Self>
+impl FromLines for PlaylistDownloadStartedEvent {
+    async fn from_lines<Lines, Line>(lines: Lines) -> Option<Self>
     where
-        Lines: ::futures::Stream<Item = &'a str> + ::core::marker::Send,
-        Self: Sized + 'a,
+        Lines: ::futures::Stream<Item = Line> + ::core::marker::Send,
+        Line: AsRef<str>,
+        Self: Sized,
     {
         use ::futures::StreamExt as _;
 
@@ -566,7 +568,7 @@ impl<'a> FromYtdlpLines<'a> for PlaylistDownloadStartedEvent<'a> {
         ::futures::pin_mut!(lines);
 
         while let Some(line) = lines.next().await {
-            if let Some(line) = line.strip_prefix("[playlist-started:url]") {
+            if let Some(line) = line.as_ref().strip_prefix("[playlist-started:url]") {
                 let mut attrs = line.split(';');
 
                 let url = parse_attr(attrs.next()?)?;
@@ -574,14 +576,14 @@ impl<'a> FromYtdlpLines<'a> for PlaylistDownloadStartedEvent<'a> {
                 let video = UnresolvedVideo { url };
                 videos.push(video);
 
-            } else if let Some(line) = line.strip_prefix("[playlist-started:metadata]") {
+            } else if let Some(line) = line.as_ref().strip_prefix("[playlist-started:metadata]") {
                 let mut attrs = line.split(';');
 
                 let id = parse_attr(attrs.next()?)?;
                 let title = parse_attr(attrs.next()?);
                 let url = parse_attr(attrs.next()?)?;
 
-                let videos = videos.is_empty().not().then(|| MaybeOwnedVec::Owned(videos));
+                let videos = videos.is_empty().not().then(|| videos.into());
 
                 let playlist = PartiallyResolvedPlaylist {
                     url,
@@ -598,37 +600,29 @@ impl<'a> FromYtdlpLines<'a> for PlaylistDownloadStartedEvent<'a> {
     }
 }
 
-/// TODO: Try making borrowed works
-fn parse_multivalued_attr<'a>(string: &'a str) -> Option<MaybeOwnedVec<'a, MaybeOwnedString<'a>>> {
+/// TODO: Try making borrowing works
+fn parse_multivalued_attr(string: &str) -> Option<MaybeOwnedVec<MaybeOwnedString>> {
     let attr = parse_attr(string)?;
 
-    let attrs = match attr {
-        MaybeOwnedString::Borrowed(attr) => attr
-            .split(',')
-            .map(normalize)
-            .collect(),
+    let attrs = attr
+        .split(',')
+        .map(parse_attr)
+        .flatten()
+        .collect::<Vec<_>>();
 
-        MaybeOwnedString::Owned(attr) => attr
-            .split(',')
-            .map(normalize)
-            .map(|attr| attr.into_owned())
-            .map(Into::into)
-            .collect()
-    };
-
-    Some(MaybeOwnedVec::Owned(attrs))
+    Some(attrs.into())
 }
 
-fn parse_attr<'a>(string: &'a str) -> Option<MaybeOwnedString<'a>> {
+fn parse_attr(string: &str) -> Option<MaybeOwnedString> {
     let string = normalize(string);
 
     if string == "NA" {
         None
     } else {
-        Some(string)
+        Some(string.to_owned().into())
     }
 }
 
-fn normalize<'a>(string: &'a str) -> MaybeOwnedString<'a> {
-    string.trim().into()
+fn normalize(string: &str) -> &str {
+    string.trim()
 }

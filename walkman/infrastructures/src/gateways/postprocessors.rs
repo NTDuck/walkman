@@ -19,14 +19,14 @@ pub enum AlbumNamingPolicy {
 }
 
 #[async_trait]
-impl PostProcessor<ResolvedVideo<'_>> for Id3MetadataWriter {
+impl PostProcessor<ResolvedVideo> for Id3MetadataWriter {
     async fn process(self: ::std::sync::Arc<Self>, video: &ResolvedVideo) -> Fallible<()> {
         self.write(video, None)
     }
 }
 
 #[async_trait]
-impl PostProcessor<ResolvedPlaylist<'_>> for Id3MetadataWriter {
+impl PostProcessor<ResolvedPlaylist> for Id3MetadataWriter {
     async fn process(self: ::std::sync::Arc<Self>, playlist: &ResolvedPlaylist) -> Fallible<()> {
         use ::rayon::iter::ParallelIterator as _;
         use ::rayon::iter::IntoParallelIterator as _;

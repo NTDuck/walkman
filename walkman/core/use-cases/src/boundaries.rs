@@ -6,43 +6,43 @@ use crate::models::events::VideoDownloadEvent;
 use crate::utils::aliases::Fallible;
 use crate::utils::aliases::MaybeOwnedString;
 
-pub trait DownloadVideoInputBoundary: for<'a> Accept<DownloadVideoRequestModel<'a>> {}
+pub trait DownloadVideoInputBoundary: Accept<DownloadVideoRequestModel> {}
 
 impl<InputBoundary> DownloadVideoInputBoundary for InputBoundary
 where
-    InputBoundary: for<'a> Accept<DownloadVideoRequestModel<'a>>,
+    InputBoundary: Accept<DownloadVideoRequestModel>,
 {
 }
 
-pub struct DownloadVideoRequestModel<'a> {
-    pub url: MaybeOwnedString<'a>,
+pub struct DownloadVideoRequestModel {
+    pub url: MaybeOwnedString,
 }
 
-pub trait DownloadPlaylistInputBoundary: for<'a> Accept<DownloadPlaylistRequestModel<'a>> {}
+pub trait DownloadPlaylistInputBoundary: Accept<DownloadPlaylistRequestModel> {}
 
 impl<InputBoundary> DownloadPlaylistInputBoundary for InputBoundary
 where
-    InputBoundary: for<'a> Accept<DownloadPlaylistRequestModel<'a>>,
+    InputBoundary: Accept<DownloadPlaylistRequestModel>,
 {
 }
 
-pub struct DownloadPlaylistRequestModel<'a> {
-    pub url: MaybeOwnedString<'a>,
+pub struct DownloadPlaylistRequestModel {
+    pub url: MaybeOwnedString,
 }
 
-pub trait DownloadVideoOutputBoundary: Activate + for<'a> Update<VideoDownloadEvent<'a>> + for<'a> Update<DiagnosticEvent<'a>> {}
+pub trait DownloadVideoOutputBoundary: Activate + Update<VideoDownloadEvent> + Update<DiagnosticEvent> {}
 
 impl<OutputBoundary> DownloadVideoOutputBoundary for OutputBoundary
 where
-    OutputBoundary: Activate + for<'a> Update<VideoDownloadEvent<'a>> + for<'a> Update<DiagnosticEvent<'a>>,
+    OutputBoundary: Activate + Update<VideoDownloadEvent> + Update<DiagnosticEvent>,
 {
 }
 
-pub trait DownloadPlaylistOutputBoundary: Activate + for<'a> Update<PlaylistDownloadEvent<'a>> + for<'a> Update<VideoDownloadEvent<'a>> + for<'a> Update<DiagnosticEvent<'a>> {}
+pub trait DownloadPlaylistOutputBoundary: Activate + Update<PlaylistDownloadEvent> + Update<VideoDownloadEvent> + Update<DiagnosticEvent> {}
 
 impl<OutputBoundary> DownloadPlaylistOutputBoundary for OutputBoundary
 where
-    OutputBoundary: Activate + for<'a> Update<PlaylistDownloadEvent<'a>> + for<'a> Update<VideoDownloadEvent<'a>> + for<'a> Update<DiagnosticEvent<'a>>,
+    OutputBoundary: Activate + Update<PlaylistDownloadEvent> + Update<VideoDownloadEvent> + Update<DiagnosticEvent>,
 {
 }
 

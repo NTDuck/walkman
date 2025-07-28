@@ -4,20 +4,20 @@ pub mod events {
     use crate::{models::descriptors::{PartiallyResolvedPlaylist, PartiallyResolvedVideo, ResolvedPlaylist, ResolvedVideo}, utils::aliases::MaybeOwnedString};
 
     #[derive(Debug, Clone)]
-    pub enum VideoDownloadEvent<'a> {
-        Started(VideoDownloadStartedEvent<'a>),
-        ProgressUpdated(VideoDownloadProgressUpdatedEvent<'a>),
-        Completed(VideoDownloadCompletedEvent<'a>),
+    pub enum VideoDownloadEvent {
+        Started(VideoDownloadStartedEvent),
+        ProgressUpdated(VideoDownloadProgressUpdatedEvent),
+        Completed(VideoDownloadCompletedEvent),
     }
 
     #[derive(Debug, Clone)]
-    pub struct VideoDownloadStartedEvent<'a> {
-        pub video: PartiallyResolvedVideo<'a>,
+    pub struct VideoDownloadStartedEvent {
+        pub video: PartiallyResolvedVideo,
     }
 
     #[derive(Debug, Clone)]
-    pub struct VideoDownloadProgressUpdatedEvent<'a> {
-        pub id: VideoId<'a>,
+    pub struct VideoDownloadProgressUpdatedEvent {
+        pub id: VideoId,
 
         pub eta: ::std::time::Duration,
         pub elapsed: ::std::time::Duration,
@@ -28,37 +28,37 @@ pub mod events {
     }
 
     #[derive(Debug, Clone)]
-    pub struct VideoDownloadCompletedEvent<'a> {
-        pub video: ResolvedVideo<'a>,
+    pub struct VideoDownloadCompletedEvent {
+        pub video: ResolvedVideo,
     }
 
     #[derive(Debug, Clone)]
-    pub enum PlaylistDownloadEvent<'a> {
-        Started(PlaylistDownloadStartedEvent<'a>),
-        Completed(PlaylistDownloadCompletedEvent<'a>),
+    pub enum PlaylistDownloadEvent {
+        Started(PlaylistDownloadStartedEvent),
+        Completed(PlaylistDownloadCompletedEvent),
     }
 
     #[derive(Debug, Clone)]
-    pub struct PlaylistDownloadStartedEvent<'a> {
-        pub playlist: PartiallyResolvedPlaylist<'a>,
+    pub struct PlaylistDownloadStartedEvent {
+        pub playlist: PartiallyResolvedPlaylist,
     }
 
-    pub struct PlaylistDownloadProgressUpdatedEvent<'a> {
-        pub video: ResolvedVideo<'a>,
+    pub struct PlaylistDownloadProgressUpdatedEvent {
+        pub video: ResolvedVideo,
 
         pub completed_videos: u64,
         pub total_videos: u64,
     }
 
     #[derive(Debug, Clone)]
-    pub struct PlaylistDownloadCompletedEvent<'a> {
-        pub playlist: ResolvedPlaylist<'a>,
+    pub struct PlaylistDownloadCompletedEvent {
+        pub playlist: ResolvedPlaylist,
     }
 
     #[derive(Debug, Clone)]
-    pub struct DiagnosticEvent<'a> {
+    pub struct DiagnosticEvent {
         pub level: DiagnosticLevel,
-        pub message: MaybeOwnedString<'a>,
+        pub message: MaybeOwnedString,
     }
 
     #[derive(Debug, Clone)]
@@ -74,50 +74,50 @@ pub mod descriptors {
     use crate::utils::aliases::{MaybeOwnedString, MaybeOwnedVec};
 
     #[derive(Debug, Clone)]
-    pub struct UnresolvedVideo<'a> {
-        pub url: MaybeOwnedString<'a>,
+    pub struct UnresolvedVideo {
+        pub url: MaybeOwnedString,
     }
 
     #[derive(Debug, Clone)]
-    pub struct PartiallyResolvedVideo<'a> {
-        pub url: MaybeOwnedString<'a>,
+    pub struct PartiallyResolvedVideo {
+        pub url: MaybeOwnedString,
 
-        pub id: VideoId<'a>,
-        pub metadata: VideoMetadata<'a>,
+        pub id: VideoId,
+        pub metadata: VideoMetadata,
     }
 
-    pub type ResolvedVideo<'a> = ::domain::Video<'a>;
+    pub type ResolvedVideo = ::domain::Video;
 
     #[derive(Debug, Clone)]
-    pub struct UnresolvedPlaylist<'a> {
-        pub url: MaybeOwnedString<'a>,
-    }
-
-    #[derive(Debug, Clone)]
-    pub struct PartiallyResolvedPlaylist<'a> {
-        pub url: MaybeOwnedString<'a>,
-
-        pub id: PlaylistId<'a>,
-        pub metadata: PlaylistMetadata<'a>,
-        pub videos: Option<MaybeOwnedVec<'a, UnresolvedVideo<'a>>>,
-    }
-
-    pub type ResolvedPlaylist<'a> = ::domain::Playlist<'a>;
-
-    #[derive(Debug, Clone)]
-    pub struct UnresolvedChannel<'a> {
-        pub url: MaybeOwnedString<'a>,
+    pub struct UnresolvedPlaylist {
+        pub url: MaybeOwnedString,
     }
 
     #[derive(Debug, Clone)]
-    pub struct PartiallyResolvedChannel<'a> {
-        pub url: MaybeOwnedString<'a>,
+    pub struct PartiallyResolvedPlaylist {
+        pub url: MaybeOwnedString,
 
-        pub id: ChannelId<'a>,
-        pub metadata: ChannelMetadata<'a>,
-        pub videos: Option<MaybeOwnedVec<'a, UnresolvedVideo<'a>>>,
-        pub playlists: Option<MaybeOwnedVec<'a, UnresolvedPlaylist<'a>>>,
+        pub id: PlaylistId,
+        pub metadata: PlaylistMetadata,
+        pub videos: Option<MaybeOwnedVec<UnresolvedVideo>>,
     }
 
-    pub type ResolvedChannel<'a> = ::domain::Channel<'a>;
+    pub type ResolvedPlaylist = ::domain::Playlist;
+
+    #[derive(Debug, Clone)]
+    pub struct UnresolvedChannel {
+        pub url: MaybeOwnedString,
+    }
+
+    #[derive(Debug, Clone)]
+    pub struct PartiallyResolvedChannel {
+        pub url: MaybeOwnedString,
+
+        pub id: ChannelId,
+        pub metadata: ChannelMetadata,
+        pub videos: Option<MaybeOwnedVec<UnresolvedVideo>>,
+        pub playlists: Option<MaybeOwnedVec<UnresolvedPlaylist>>,
+    }
+
+    pub type ResolvedChannel = ::domain::Channel;
 }
