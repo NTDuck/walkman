@@ -135,7 +135,7 @@ impl PlaylistDownloader for YtdlpDownloader {
                     async {
                         let event = PlaylistDownloadStartedEvent::from_lines(stdout).await.ok()?;
                         let playlist = event.playlist.clone();
-                        
+
                         playlist_download_events_tx.send(PlaylistDownloadEvent::Started(event))?;
 
                         Ok(playlist)
@@ -169,7 +169,7 @@ impl PlaylistDownloader for YtdlpDownloader {
                 .map(|videos| videos.iter().cloned().collect())
                 .unwrap_or_default()));
         
-        let unresolved_videos_notify = ::std::sync::Arc::new(::tokio::sync::Notify::new());
+        let queue_emptied_notify = ::std::sync::Arc::new(::tokio::sync::Notify::new());
         
         (0..self.configurations.workers).for_each(|_| {
             ::tokio::spawn({
@@ -182,16 +182,17 @@ impl PlaylistDownloader for YtdlpDownloader {
                 let completed = ::std::sync::Arc::clone(&completed);
                 let resolved_videos = ::std::sync::Arc::clone(&resolved_videos);
                 let unresolved_videos = ::std::sync::Arc::clone(&unresolved_videos);
-                let unresolved_videos_notify = ::std::sync::Arc::clone(&unresolved_videos_notify);
+                let queue_emptied_notify = ::std::sync::Arc::clone(&queue_emptied_notify);
 
                 async move {
                     loop {
-                        let (video, is_last_worker_to_poll) = {
+                        let (video, queue_emptied_by_this_worker) = {
                             let mut unresolved_videos = unresolved_videos.lock().await;
+                            
                             let video = unresolved_videos.pop_front();
-                            let is_last_worker_to_poll = unresolved_videos.is_empty();
+                            let queue_emptied_by_this_worker = unresolved_videos.is_empty();
 
-                            (video, is_last_worker_to_poll)
+                            (video, queue_emptied_by_this_worker)
                         };
 
                         let Some(video) = video else { break };
@@ -234,8 +235,8 @@ impl PlaylistDownloader for YtdlpDownloader {
                             },
                         )?;
                         
-                        if is_last_worker_to_poll {
-                            unresolved_videos_notify.notify_one();
+                        if queue_emptied_by_this_worker {
+                            queue_emptied_notify.notify_one();
                         }
 
                         ::tokio::time::sleep(this.configurations.cooldown).await;
@@ -249,10 +250,10 @@ impl PlaylistDownloader for YtdlpDownloader {
         ::tokio::spawn({
             let playlist_download_events_tx = playlist_download_events_tx.clone();
 
-            let unresolved_videos_notify = ::std::sync::Arc::clone(&unresolved_videos_notify);
+            let queue_emptied_notify = ::std::sync::Arc::clone(&queue_emptied_notify);
 
             async move {
-                unresolved_videos_notify.notified().await;
+                queue_emptied_notify.notified().await;
 
                 let videos = ::std::mem::take(&mut *resolved_videos.lock().await);
                 let videos = videos.is_empty().not().then_some(videos.into());
