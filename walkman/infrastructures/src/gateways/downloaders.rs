@@ -1,4 +1,6 @@
 
+use std::ops::Not;
+
 use ::async_trait::async_trait;
 use ::derive_new::new;
 use ::domain::PlaylistMetadata;
@@ -542,71 +544,79 @@ impl<'a> FromYtdlpLine<'a> for DiagnosticEvent<'a> {
     }    
 }
 
-// #[async_trait]
-// trait FromYtdlpLines: Send + Sync {
-//     async fn from_lines<Lines>(lines: Lines) -> Option<Self>
-//     where
-//         Lines: ::futures::Stream<Item = &str> + ::core::marker::Send,
-//         Line: AsRef<str>,
-//         Self: Sized;
-// }
+#[async_trait]
+trait FromYtdlpLines<'a>: Send + Sync {
+    async fn from_lines<Lines>(lines: Lines) -> Option<Self>
+    where
+        Lines: ::futures::Stream<Item = &'a str> + ::core::marker::Send,
+        Self: Sized + 'a;
+}
 
-// #[async_trait]
-// impl FromYtdlpLines for PlaylistDownloadStartedEvent {
-//     async fn from_lines<Lines, Line>(lines: Lines) -> Option<Self>
-//     where
-//         Lines: ::futures::Stream<Item = Line> + ::core::marker::Send,
-//         Line: AsRef<str>,
-//         Self: Sized,        
-//     {
-//         use ::std::ops::Not as _;
-//         use ::futures::StreamExt as _;
+#[async_trait]
+impl<'a> FromYtdlpLines<'a> for PlaylistDownloadStartedEvent<'a> {
+    async fn from_lines<Lines>(lines: Lines) -> Option<Self>
+    where
+        Lines: ::futures::Stream<Item = &'a str> + ::core::marker::Send,
+        Self: Sized + 'a,
+    {
+        use ::futures::StreamExt as _;
 
-//         static PLAYLIST_VIDEOS_REGEX: ::once_cell::sync::Lazy<::regex::Regex> = lazy_regex!(
-//             r"\[playlist-started:url\](?P<url>[^;]+)"
-//         );
+        let mut videos = Vec::new();
 
-//         static PLAYLIST_METADATA_REGEX: ::once_cell::sync::Lazy<::regex::Regex> = lazy_regex!(
-//             r"\[playlist-started:metadata\](?P<id>[^;]+);(?P<title>[^;]+);(?P<url>[^;]+)"
-//         );
+        ::futures::pin_mut!(lines);
 
-//         let mut videos = Vec::new();
+        while let Some(line) = lines.next().await {
+            if let Some(line) = line.strip_prefix("[playlist-started:url]") {
+                let mut attrs = line.split(';');
 
-//         ::futures::pin_mut!(lines);
+                let url = parse_attr(attrs.next()?)?;
 
-//         while let Some(line) = lines.next().await {
-//             if let Some(captures) = PLAYLIST_VIDEOS_REGEX.captures(line.as_ref()) {
-//                 videos.push(UnresolvedVideo {
-//                     url: parse_attr(&captures["url"])?,
-//                 });
+                let video = UnresolvedVideo { url };
+                videos.push(video);
 
-//             } else if let Some(captures) = PLAYLIST_METADATA_REGEX.captures(line.as_ref()) {
-//                 let playlist = PartiallyResolvedPlaylist {
-//                     url: parse_attr(&captures["url"])?,
-//                     id: parse_attr(&captures["id"])?,
-//                     metadata: PlaylistMetadata {
-//                         title: parse_attr(&captures["title"]),
-//                     },
-//                     videos: videos.is_empty().not().then_some(videos),
-//                 };
+            } else if let Some(line) = line.strip_prefix("[playlist-started:metadata]") {
+                let mut attrs = line.split(';');
 
-//                 return Some(Self { playlist })
-//             }
-//         }
+                let id = parse_attr(attrs.next()?)?;
+                let title = parse_attr(attrs.next()?);
+                let url = parse_attr(attrs.next()?)?;
 
-//         None
-//     }
-// }
+                let videos = videos.is_empty().not().then(|| MaybeOwnedVec::Owned(videos));
 
+                let playlist = PartiallyResolvedPlaylist {
+                    url,
+                    id,
+                    metadata: PlaylistMetadata { title },
+                    videos,
+                };
+
+                return Some(Self { playlist })
+            }
+        }
+
+        None
+    }
+}
+
+/// TODO: Try making borrowed works
 fn parse_multivalued_attr<'a>(string: &'a str) -> Option<MaybeOwnedVec<'a, MaybeOwnedString<'a>>> {
-    // let attrs = parse_attr(string)?.into_owned().into();
+    let attr = parse_attr(string)?;
 
-    // Some(parse_attr(string)?.into_owned()
-    //     .split(',')
-    //     .map(normalize)
-    //     .collect())
+    let attrs = match attr {
+        MaybeOwnedString::Borrowed(attr) => attr
+            .split(',')
+            .map(normalize)
+            .collect(),
 
-    todo!()
+        MaybeOwnedString::Owned(attr) => attr
+            .split(',')
+            .map(normalize)
+            .map(|attr| attr.into_owned())
+            .map(Into::into)
+            .collect()
+    };
+
+    Some(MaybeOwnedVec::Owned(attrs))
 }
 
 fn parse_attr<'a>(string: &'a str) -> Option<MaybeOwnedString<'a>> {
