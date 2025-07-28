@@ -2,56 +2,57 @@ pub(crate) mod utils;
 
 use crate::utils::aliases::MaybeOwnedPath;
 use crate::utils::aliases::MaybeOwnedString;
+use crate::utils::aliases::MaybeOwnedVec;
 
 #[derive(Debug, Clone)]
-pub struct Video {
-    pub url: MaybeOwnedString,
+pub struct Video<'a> {
+    pub url: MaybeOwnedString<'a>,
 
-    pub id: VideoId,
-    pub metadata: VideoMetadata,
+    pub id: VideoId<'a>,
+    pub metadata: VideoMetadata<'a>,
 
-    pub path: MaybeOwnedPath,
+    pub path: MaybeOwnedPath<'a>,
 }
 
-pub type VideoId = MaybeOwnedString;
+pub type VideoId<'a> = MaybeOwnedString<'a>;
 
 #[derive(Debug, Clone)]
-pub struct VideoMetadata {
-    pub title: Option<MaybeOwnedString>,
-    pub album: Option<MaybeOwnedString>,
-    pub artists: Option<Vec<MaybeOwnedString>>,
-    pub genres: Option<Vec<MaybeOwnedString>>,
-}
-
-#[derive(Debug, Clone)]
-pub struct Playlist {
-    pub url: MaybeOwnedString,
-
-    pub id: PlaylistId,
-    pub metadata: PlaylistMetadata,
-    pub videos: Option<Vec<Video>>,
-}
-
-pub type PlaylistId = MaybeOwnedString;
-
-#[derive(Debug, Clone)]
-pub struct PlaylistMetadata {
-    pub title: Option<MaybeOwnedString>,
+pub struct VideoMetadata<'a> {
+    pub title: Option<MaybeOwnedString<'a>>,
+    pub album: Option<MaybeOwnedString<'a>>,
+    pub artists: Option<MaybeOwnedVec<'a, MaybeOwnedString<'a>>>,
+    pub genres: Option<MaybeOwnedVec<'a, MaybeOwnedString<'a>>>,
 }
 
 #[derive(Debug, Clone)]
-pub struct Channel {
-    pub url: MaybeOwnedString,
+pub struct Playlist<'a> {
+    pub url: MaybeOwnedString<'a>,
 
-    pub id: ChannelId,
-    pub metadata: ChannelMetadata,
-    pub videos: Option<Vec<Video>>,
-    pub playlists: Option<Vec<Playlist>>,
+    pub id: PlaylistId<'a>,
+    pub metadata: PlaylistMetadata<'a>,
+    pub videos: Option<MaybeOwnedVec<'a, Video<'a>>>,
 }
 
-pub type ChannelId = MaybeOwnedString;
+pub type PlaylistId<'a> = MaybeOwnedString<'a>;
 
 #[derive(Debug, Clone)]
-pub struct ChannelMetadata {
-    pub title: Option<MaybeOwnedString>,
+pub struct PlaylistMetadata<'a> {
+    pub title: Option<MaybeOwnedString<'a>>,
+}
+
+#[derive(Debug, Clone)]
+pub struct Channel<'a> {
+    pub url: MaybeOwnedString<'a>,
+
+    pub id: ChannelId<'a>,
+    pub metadata: ChannelMetadata<'a>,
+    pub videos: Option<MaybeOwnedVec<'a, Video<'a>>>,
+    pub playlists: Option<MaybeOwnedVec<'a, Playlist<'a>>>,
+}
+
+pub type ChannelId<'a> = MaybeOwnedString<'a>;
+
+#[derive(Debug, Clone)]
+pub struct ChannelMetadata<'a> {
+    pub title: Option<MaybeOwnedString<'a>>,
 }

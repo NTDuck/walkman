@@ -20,16 +20,17 @@ use crate::utils::aliases::BoxedStream;
 use crate::utils::aliases::Fallible;
 
 #[derive(new)]
-pub struct DownloadVideoInteractor {
+pub struct DownloadVideoInteractor<'a> {
     output_boundary: ::std::sync::Arc<dyn DownloadVideoOutputBoundary>,
 
-    downloader: ::std::sync::Arc<dyn VideoDownloader>,
-    postprocessors: Vec<::std::sync::Arc<dyn PostProcessor<ResolvedVideo>>>,
+    downloader: ::std::sync::Arc<dyn VideoDownloader<'a>>,
+    postprocessors: Vec<::std::sync::Arc<dyn for<'b> PostProcessor<ResolvedVideo<'b>>>>,
 }
 
 #[async_trait]
-impl Accept<DownloadVideoRequestModel> for DownloadVideoInteractor {
-    async fn accept(self: ::std::sync::Arc<Self>, request: DownloadVideoRequestModel) -> Fallible<()> {
+impl<'a> Accept<DownloadVideoRequestModel<'a>> for DownloadVideoInteractor<'a>
+{
+    async fn accept(self: ::std::sync::Arc<Self>, request: DownloadVideoRequestModel<'a>) -> Fallible<()> {
         ::std::sync::Arc::clone(&self.output_boundary).activate().await?;
 
         let DownloadVideoRequestModel { url } = request;
@@ -49,8 +50,8 @@ impl Accept<DownloadVideoRequestModel> for DownloadVideoInteractor {
 }
 
 #[async_trait]
-impl Accept<BoxedStream<VideoDownloadEvent>> for DownloadVideoInteractor {
-    async fn accept(self: ::std::sync::Arc<Self>, events: BoxedStream<VideoDownloadEvent>) -> Fallible<()> {
+impl<'a> Accept<BoxedStream<VideoDownloadEvent<'a>>> for DownloadVideoInteractor<'a> {
+    async fn accept(self: ::std::sync::Arc<Self>, events: BoxedStream<VideoDownloadEvent<'a>>) -> Fallible<()> {
         use ::futures::StreamExt as _;
 
         ::futures::pin_mut!(events);
@@ -70,8 +71,8 @@ impl Accept<BoxedStream<VideoDownloadEvent>> for DownloadVideoInteractor {
 }
 
 #[async_trait]
-impl Accept<BoxedStream<DiagnosticEvent>> for DownloadVideoInteractor {
-    async fn accept(self: ::std::sync::Arc<Self>, events: BoxedStream<DiagnosticEvent>) -> Fallible<()> {
+impl<'a> Accept<BoxedStream<DiagnosticEvent<'a>>> for DownloadVideoInteractor<'a> {
+    async fn accept(self: ::std::sync::Arc<Self>, events: BoxedStream<DiagnosticEvent<'a>>) -> Fallible<()> {
         use ::futures::StreamExt as _;
 
         ::futures::pin_mut!(events);
@@ -85,16 +86,16 @@ impl Accept<BoxedStream<DiagnosticEvent>> for DownloadVideoInteractor {
 }
 
 #[derive(new)]
-pub struct DownloadPlaylistInteractor {
+pub struct DownloadPlaylistInteractor<'a> {
     output_boundary: ::std::sync::Arc<dyn DownloadPlaylistOutputBoundary>,
 
-    downloader: ::std::sync::Arc<dyn PlaylistDownloader>,
-    postprocessors: Vec<::std::sync::Arc<dyn PostProcessor<ResolvedPlaylist>>>,
+    downloader: ::std::sync::Arc<dyn PlaylistDownloader<'a>>,
+    postprocessors: Vec<::std::sync::Arc<dyn for<'b> PostProcessor<ResolvedPlaylist<'b>>>>,
 }
 
 #[async_trait]
-impl Accept<DownloadPlaylistRequestModel> for DownloadPlaylistInteractor {
-    async fn accept(self: ::std::sync::Arc<Self>, request: DownloadPlaylistRequestModel) -> Fallible<()> {
+impl<'a> Accept<DownloadPlaylistRequestModel<'a>> for DownloadPlaylistInteractor<'a> {
+    async fn accept(self: ::std::sync::Arc<Self>, request: DownloadPlaylistRequestModel<'a>) -> Fallible<()> {
         ::std::sync::Arc::clone(&self.output_boundary).activate().await?;
 
         let DownloadPlaylistRequestModel { url } = request;
@@ -115,8 +116,8 @@ impl Accept<DownloadPlaylistRequestModel> for DownloadPlaylistInteractor {
 }
 
 #[async_trait]
-impl Accept<BoxedStream<PlaylistDownloadEvent>> for DownloadPlaylistInteractor {
-    async fn accept(self: ::std::sync::Arc<Self>, events: BoxedStream<PlaylistDownloadEvent>) -> Fallible<()> {
+impl<'a> Accept<BoxedStream<PlaylistDownloadEvent<'a>>> for DownloadPlaylistInteractor<'a> {
+    async fn accept(self: ::std::sync::Arc<Self>, events: BoxedStream<PlaylistDownloadEvent<'a>>) -> Fallible<()> {
         use ::futures::StreamExt as _;
 
         ::futures::pin_mut!(events);
@@ -136,8 +137,8 @@ impl Accept<BoxedStream<PlaylistDownloadEvent>> for DownloadPlaylistInteractor {
 }
 
 #[async_trait]
-impl Accept<BoxedStream<VideoDownloadEvent>> for DownloadPlaylistInteractor {
-    async fn accept(self: ::std::sync::Arc<Self>, events: BoxedStream<VideoDownloadEvent>) -> Fallible<()> {
+impl<'a> Accept<BoxedStream<VideoDownloadEvent<'a>>> for DownloadPlaylistInteractor<'a> {
+    async fn accept(self: ::std::sync::Arc<Self>, events: BoxedStream<VideoDownloadEvent<'a>>) -> Fallible<()> {
         use ::futures::StreamExt as _;
 
         ::futures::pin_mut!(events);
@@ -151,8 +152,8 @@ impl Accept<BoxedStream<VideoDownloadEvent>> for DownloadPlaylistInteractor {
 }
 
 #[async_trait]
-impl Accept<BoxedStream<DiagnosticEvent>> for DownloadPlaylistInteractor {
-    async fn accept(self: ::std::sync::Arc<Self>, events: BoxedStream<DiagnosticEvent>) -> Fallible<()> {
+impl<'a> Accept<BoxedStream<DiagnosticEvent<'a>>> for DownloadPlaylistInteractor<'a> {
+    async fn accept(self: ::std::sync::Arc<Self>, events: BoxedStream<DiagnosticEvent<'a>>) -> Fallible<()> {
         use ::futures::StreamExt as _;
 
         ::futures::pin_mut!(events);

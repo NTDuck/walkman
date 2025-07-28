@@ -23,7 +23,6 @@ colored = "3.0.0"
 tokio = { workspace = true, features = ["time", "sync", "process"] }
 tokio-stream = { workspace = true, features = ["io-util"] }
 rayon = { workspace = true }
-uuid = { version = "1.17.0", features = ["v4"] }
 
 [lints]
 workspace = true
