@@ -35,6 +35,7 @@ pub mod events {
     #[derive(Debug, Clone)]
     pub enum PlaylistDownloadEvent {
         Started(PlaylistDownloadStartedEvent),
+        ProgressUpdated(PlaylistDownloadProgressUpdatedEvent),
         Completed(PlaylistDownloadCompletedEvent),
     }
 
@@ -43,6 +44,7 @@ pub mod events {
         pub playlist: PartiallyResolvedPlaylist,
     }
 
+    #[derive(Debug, Clone)]
     pub struct PlaylistDownloadProgressUpdatedEvent {
         pub video: ResolvedVideo,
 

@@ -1,6 +1,6 @@
-use async_trait::async_trait;
-use derive_new::new;
-use use_cases::{gateways::PostProcessor, models::descriptors::{ResolvedPlaylist, ResolvedVideo}};
+use ::async_trait::async_trait;
+use ::derive_new::new;
+use ::use_cases::{gateways::PostProcessor, models::descriptors::{ResolvedPlaylist, ResolvedVideo}};
 
 use crate::utils::aliases::Fallible;
 
@@ -45,15 +45,11 @@ impl Id3MetadataWriter {
         
         let mut tag = ::id3::Tag::new();
 
-        video.metadata.title
-            .as_deref()
-            .map(|title| tag.set_title(title));
+        video.metadata.title.as_deref().map(|title| tag.set_title(title));
 
         match self.configurations.policy {
             AlbumNamingPolicy::UseVideoAlbum => {
-                video.metadata.album
-                    .as_deref()
-                    .map(|album| tag.set_album(album));
+                video.metadata.album.as_deref().map(|album| tag.set_album(album));
             },
 
             AlbumNamingPolicy::UsePlaylistTitle => {
@@ -65,17 +61,15 @@ impl Id3MetadataWriter {
 
         video.metadata.artists
             .as_deref()
-            .map(|artists| artists.join(MULTIVALUE_DELIMITER))
+            .map(|artists| artists.join(", "))
             .map(|artists| tag.set_artist(artists));
 
         video.metadata.genres
             .as_deref()
-            .map(|genres| tag.set_genre(genres.join(MULTIVALUE_DELIMITER)));
+            .map(|genres| tag.set_genre(genres.join(", ")));
 
         tag.write_to_path(&video.path, ::id3::Version::Id3v23)?;
 
         Ok(())
     }
 }
-
-const MULTIVALUE_DELIMITER: &str = ", ";
