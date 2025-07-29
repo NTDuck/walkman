@@ -3,16 +3,34 @@ pub mod aliases {
 
     pub type MaybeOwnedString = ::std::borrow::Cow<'static, str>;
     pub type MaybeOwnedPath = ::std::borrow::Cow<'static, ::std::path::Path>;
+    pub type MaybeOwnedVec<T> = ::std::borrow::Cow<'static, [T]>;
 
     pub type BoxedStream<T> =
-        ::std::pin::Pin<::std::boxed::Box<dyn ::futures_core::Stream<Item = T> + ::core::marker::Send>>;
+        ::std::pin::Pin<::std::boxed::Box<dyn ::futures::Stream<Item = T> + ::core::marker::Send>>;
 }
 
-pub mod macros {
-    #[macro_export]
-    macro_rules! regex {
-        ($pattern:expr) => {
-            ::once_cell::sync::Lazy::new(|| ::regex::Regex::new($pattern).unwrap())
-        };
+pub mod extensions {
+    use crate::utils::aliases::Fallible;
+
+    pub trait OptionExt<T> {
+        fn ok(self) -> Fallible<T>;
+    }
+
+    impl<T> OptionExt<T> for Option<T> {
+        #[track_caller]
+        fn ok(self) -> Fallible<T> {
+            match self {
+                Some(val) => Ok(val),
+                None => {
+                    let location = ::std::panic::Location::caller();
+                    Err(::anyhow::anyhow!(
+                        "called `OptionExt::some()` on a `None` value at {}:{}:{}",
+                        location.file(),
+                        location.line(),
+                        location.column()
+                    ))
+                },
+            }
+        }
     }
 }

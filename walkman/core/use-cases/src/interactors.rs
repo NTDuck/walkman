@@ -1,54 +1,85 @@
 use ::async_trait::async_trait;
 use ::derive_new::new;
 
-use crate::boundaries::DownloadPlaylistInputBoundary;
+use crate::boundaries::Accept;
 use crate::boundaries::DownloadPlaylistOutputBoundary;
 use crate::boundaries::DownloadPlaylistRequestModel;
-use crate::boundaries::DownloadVideoInputBoundary;
 use crate::boundaries::DownloadVideoOutputBoundary;
 use crate::boundaries::DownloadVideoRequestModel;
-use crate::gateways::Downloader;
-use crate::gateways::MetadataWriter;
-use crate::gateways::PlaylistDownloadEvent;
-use crate::gateways::VideoDownloadEvent;
+use crate::gateways::PlaylistDownloader;
+use crate::gateways::PostProcessor;
+use crate::gateways::VideoDownloader;
+use crate::models::descriptors::ResolvedPlaylist;
+use crate::models::descriptors::ResolvedVideo;
+use crate::models::descriptors::UnresolvedPlaylist;
+use crate::models::descriptors::UnresolvedVideo;
+use crate::models::events::DiagnosticEvent;
+use crate::models::events::PlaylistDownloadEvent;
+use crate::models::events::VideoDownloadEvent;
+use crate::utils::aliases::BoxedStream;
 use crate::utils::aliases::Fallible;
+use crate::utils::aliases::MaybeOwnedVec;
 
 #[derive(new)]
 pub struct DownloadVideoInteractor {
     output_boundary: ::std::sync::Arc<dyn DownloadVideoOutputBoundary>,
 
-    downloader: ::std::sync::Arc<dyn Downloader>,
-    metadata_writer: ::std::sync::Arc<dyn MetadataWriter>,
+    downloader: ::std::sync::Arc<dyn VideoDownloader>,
+    postprocessors: MaybeOwnedVec<::std::sync::Arc<dyn PostProcessor<ResolvedVideo>>>,
 }
 
 #[async_trait]
-impl DownloadVideoInputBoundary for DownloadVideoInteractor {
-    async fn apply(&self, model: DownloadVideoRequestModel) -> Fallible<()> {
-        use ::futures_util::StreamExt as _;
+impl Accept<DownloadVideoRequestModel> for DownloadVideoInteractor {
+    async fn accept(self: ::std::sync::Arc<Self>, request: DownloadVideoRequestModel) -> Fallible<()> {
+        ::std::sync::Arc::clone(&self.output_boundary).activate().await?;
 
-        let DownloadVideoRequestModel {
-            url,
-            directory,
-        } = model;
+        let DownloadVideoRequestModel { url } = request;
+        let video = UnresolvedVideo { url };
 
-        let video_events = self
-            .downloader
-            .download_video(url, directory)
-            .await?;
+        let (video_download_events, diagnostic_events) =
+            ::std::sync::Arc::clone(&self.downloader).download(video).await?;
 
-        let output_boundary = self.output_boundary.clone();
-        let metadata_writer = self.metadata_writer.clone();
+        ::tokio::try_join!(
+            ::std::sync::Arc::clone(&self).accept(video_download_events),
+            ::std::sync::Arc::clone(&self).accept(diagnostic_events),
+        )?;
 
-        ::futures_util::pin_mut!(video_events);
+        ::std::sync::Arc::clone(&self.output_boundary).deactivate().await?;
 
-        while let Some(event) = video_events.next().await {
-            output_boundary.update(&event).await?;
+        Ok(())
+    }
+}
 
-            if let VideoDownloadEvent::Completed(video) = event {
-                metadata_writer
-                    .write_video(&video)
-                    .await?;
+#[async_trait]
+impl Accept<BoxedStream<VideoDownloadEvent>> for DownloadVideoInteractor {
+    async fn accept(self: ::std::sync::Arc<Self>, events: BoxedStream<VideoDownloadEvent>) -> Fallible<()> {
+        use ::futures::StreamExt as _;
+
+        ::futures::pin_mut!(events);
+
+        while let Some(event) = events.next().await {
+            ::std::sync::Arc::clone(&self.output_boundary).update(&event).await?;
+
+            if let VideoDownloadEvent::Completed(event) = event {
+                for postprocessor in self.postprocessors.iter() {
+                    ::std::sync::Arc::clone(postprocessor).process(&event.video).await?;
+                }
             }
+        }
+
+        Ok(())
+    }
+}
+
+#[async_trait]
+impl Accept<BoxedStream<DiagnosticEvent>> for DownloadVideoInteractor {
+    async fn accept(self: ::std::sync::Arc<Self>, events: BoxedStream<DiagnosticEvent>) -> Fallible<()> {
+        use ::futures::StreamExt as _;
+
+        ::futures::pin_mut!(events);
+
+        while let Some(event) = events.next().await {
+            ::std::sync::Arc::clone(&self.output_boundary).update(&event).await?;
         }
 
         Ok(())
@@ -59,56 +90,79 @@ impl DownloadVideoInputBoundary for DownloadVideoInteractor {
 pub struct DownloadPlaylistInteractor {
     output_boundary: ::std::sync::Arc<dyn DownloadPlaylistOutputBoundary>,
 
-    downloader: ::std::sync::Arc<dyn Downloader>,
-    metadata_writer: ::std::sync::Arc<dyn MetadataWriter>,
+    downloader: ::std::sync::Arc<dyn PlaylistDownloader>,
+    postprocessors: MaybeOwnedVec<::std::sync::Arc<dyn PostProcessor<ResolvedPlaylist>>>,
 }
 
 #[async_trait]
-impl DownloadPlaylistInputBoundary for DownloadPlaylistInteractor {
-    async fn apply(&self, model: DownloadPlaylistRequestModel) -> Fallible<()> {
-        use ::futures_util::StreamExt as _;
+impl Accept<DownloadPlaylistRequestModel> for DownloadPlaylistInteractor {
+    async fn accept(self: ::std::sync::Arc<Self>, request: DownloadPlaylistRequestModel) -> Fallible<()> {
+        ::std::sync::Arc::clone(&self.output_boundary).activate().await?;
 
-        let DownloadPlaylistRequestModel {
-            url,
-            directory,
-        } = model;
-        let (playlist_events, video_events) = self
-            .downloader
-            .download_playlist(url, directory)
-            .await?;
+        let DownloadPlaylistRequestModel { url } = request;
+        let playlist = UnresolvedPlaylist { url };
 
-        let output_boundary = self.output_boundary.clone();
-        let metadata_writer = self.metadata_writer.clone();
+        let (playlist_download_events, video_download_events, diagnostic_events) =
+            ::std::sync::Arc::clone(&self.downloader).download(playlist).await?;
 
-        let playlist_handle: ::tokio::task::JoinHandle<Fallible<()>> = ::tokio::spawn(async move {
-            ::futures_util::pin_mut!(playlist_events);
+        ::tokio::try_join!(
+            ::std::sync::Arc::clone(&self).accept(playlist_download_events),
+            ::std::sync::Arc::clone(&self).accept(video_download_events),
+            ::std::sync::Arc::clone(&self).accept(diagnostic_events),
+        )?;
 
-            while let Some(event) = playlist_events.next().await {
-                DownloadPlaylistOutputBoundary::update(&*output_boundary, &event).await?;
+        ::std::sync::Arc::clone(&self.output_boundary).deactivate().await?;
 
-                if let PlaylistDownloadEvent::Completed(playlist) = event {
-                    metadata_writer
-                        .write_playlist(&playlist)
-                        .await?;
+        Ok(())
+    }
+}
+
+#[async_trait]
+impl Accept<BoxedStream<PlaylistDownloadEvent>> for DownloadPlaylistInteractor {
+    async fn accept(self: ::std::sync::Arc<Self>, events: BoxedStream<PlaylistDownloadEvent>) -> Fallible<()> {
+        use ::futures::StreamExt as _;
+
+        ::futures::pin_mut!(events);
+
+        while let Some(event) = events.next().await {
+            ::std::sync::Arc::clone(&self.output_boundary).update(&event).await?;
+
+            if let PlaylistDownloadEvent::Completed(event) = event {
+                for postprocessor in self.postprocessors.iter() {
+                    ::std::sync::Arc::clone(postprocessor).process(&event.playlist).await?;
                 }
             }
+        }
 
-            Ok(())
-        });
+        Ok(())
+    }
+}
 
-        let output_boundary = self.output_boundary.clone();
+#[async_trait]
+impl Accept<BoxedStream<VideoDownloadEvent>> for DownloadPlaylistInteractor {
+    async fn accept(self: ::std::sync::Arc<Self>, events: BoxedStream<VideoDownloadEvent>) -> Fallible<()> {
+        use ::futures::StreamExt as _;
 
-        let video_handle: ::tokio::task::JoinHandle<Fallible<()>> = ::tokio::spawn(async move {
-            ::futures_util::pin_mut!(video_events);
+        ::futures::pin_mut!(events);
 
-            while let Some(event) = video_events.next().await {
-                DownloadVideoOutputBoundary::update(&*output_boundary, &event).await?;
-            }
+        while let Some(event) = events.next().await {
+            ::std::sync::Arc::clone(&self.output_boundary).update(&event).await?;
+        }
 
-            Ok(())
-        });
+        Ok(())
+    }
+}
 
-        let _ = ::tokio::try_join!(playlist_handle, video_handle)?;
+#[async_trait]
+impl Accept<BoxedStream<DiagnosticEvent>> for DownloadPlaylistInteractor {
+    async fn accept(self: ::std::sync::Arc<Self>, events: BoxedStream<DiagnosticEvent>) -> Fallible<()> {
+        use ::futures::StreamExt as _;
+
+        ::futures::pin_mut!(events);
+
+        while let Some(event) = events.next().await {
+            ::std::sync::Arc::clone(&self.output_boundary).update(&event).await?;
+        }
 
         Ok(())
     }
