@@ -39,7 +39,7 @@ pub struct YtdlpDownloader {
 pub struct YtdlpConfigurations {
     pub directory: MaybeOwnedPath,
     pub workers: u64,
-    pub cooldown: ::std::time::Duration,
+    pub per_worker_cooldown: ::std::time::Duration,
 }
 
 #[async_trait]
@@ -239,7 +239,7 @@ impl PlaylistDownloader for YtdlpDownloader {
                             queue_emptied_notify.notify_one();
                         }
 
-                        ::tokio::time::sleep(this.configurations.cooldown).await;
+                        ::tokio::time::sleep(this.configurations.per_worker_cooldown).await;
                     }
 
                     Ok::<_, ::anyhow::Error>(())

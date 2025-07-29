@@ -18,13 +18,14 @@ use crate::models::events::PlaylistDownloadEvent;
 use crate::models::events::VideoDownloadEvent;
 use crate::utils::aliases::BoxedStream;
 use crate::utils::aliases::Fallible;
+use crate::utils::aliases::MaybeOwnedVec;
 
 #[derive(new)]
 pub struct DownloadVideoInteractor {
     output_boundary: ::std::sync::Arc<dyn DownloadVideoOutputBoundary>,
 
     downloader: ::std::sync::Arc<dyn VideoDownloader>,
-    postprocessors: Vec<::std::sync::Arc<dyn PostProcessor<ResolvedVideo>>>,
+    postprocessors: MaybeOwnedVec<::std::sync::Arc<dyn PostProcessor<ResolvedVideo>>>,
 }
 
 #[async_trait]
@@ -60,7 +61,7 @@ impl Accept<BoxedStream<VideoDownloadEvent>> for DownloadVideoInteractor {
             ::std::sync::Arc::clone(&self.output_boundary).update(&event).await?;
             
             if let VideoDownloadEvent::Completed(event) = event {
-                for postprocessor in &self.postprocessors {
+                for postprocessor in self.postprocessors.iter() {
                     ::std::sync::Arc::clone(postprocessor).process(&event.video).await?;
                 }
             }
@@ -90,7 +91,7 @@ pub struct DownloadPlaylistInteractor {
     output_boundary: ::std::sync::Arc<dyn DownloadPlaylistOutputBoundary>,
 
     downloader: ::std::sync::Arc<dyn PlaylistDownloader>,
-    postprocessors: Vec<::std::sync::Arc<dyn PostProcessor<ResolvedPlaylist>>>,
+    postprocessors: MaybeOwnedVec<::std::sync::Arc<dyn PostProcessor<ResolvedPlaylist>>>,
 }
 
 #[async_trait]
@@ -126,7 +127,7 @@ impl Accept<BoxedStream<PlaylistDownloadEvent>> for DownloadPlaylistInteractor {
             ::std::sync::Arc::clone(&self.output_boundary).update(&event).await?;
 
             if let PlaylistDownloadEvent::Completed(event) = event {
-                for postprocessor in &self.postprocessors {
+                for postprocessor in self.postprocessors.iter() {
                     ::std::sync::Arc::clone(postprocessor).process(&event.playlist).await?;
                 }
             }
