@@ -8,11 +8,7 @@ use crate::utils::aliases::MaybeOwnedString;
 
 pub trait DownloadVideoInputBoundary: Accept<DownloadVideoRequestModel> {}
 
-impl<InputBoundary> DownloadVideoInputBoundary for InputBoundary
-where
-    InputBoundary: Accept<DownloadVideoRequestModel>,
-{
-}
+impl<InputBoundary> DownloadVideoInputBoundary for InputBoundary where InputBoundary: Accept<DownloadVideoRequestModel> {}
 
 pub struct DownloadVideoRequestModel {
     pub url: MaybeOwnedString,
@@ -20,9 +16,8 @@ pub struct DownloadVideoRequestModel {
 
 pub trait DownloadPlaylistInputBoundary: Accept<DownloadPlaylistRequestModel> {}
 
-impl<InputBoundary> DownloadPlaylistInputBoundary for InputBoundary
-where
-    InputBoundary: Accept<DownloadPlaylistRequestModel>,
+impl<InputBoundary> DownloadPlaylistInputBoundary for InputBoundary where
+    InputBoundary: Accept<DownloadPlaylistRequestModel>
 {
 }
 
@@ -32,17 +27,18 @@ pub struct DownloadPlaylistRequestModel {
 
 pub trait DownloadVideoOutputBoundary: Activate + Update<VideoDownloadEvent> + Update<DiagnosticEvent> {}
 
-impl<OutputBoundary> DownloadVideoOutputBoundary for OutputBoundary
-where
-    OutputBoundary: Activate + Update<VideoDownloadEvent> + Update<DiagnosticEvent>,
+impl<OutputBoundary> DownloadVideoOutputBoundary for OutputBoundary where
+    OutputBoundary: Activate + Update<VideoDownloadEvent> + Update<DiagnosticEvent>
 {
 }
 
-pub trait DownloadPlaylistOutputBoundary: Activate + Update<PlaylistDownloadEvent> + Update<VideoDownloadEvent> + Update<DiagnosticEvent> {}
+pub trait DownloadPlaylistOutputBoundary:
+    Activate + Update<PlaylistDownloadEvent> + Update<VideoDownloadEvent> + Update<DiagnosticEvent>
+{
+}
 
-impl<OutputBoundary> DownloadPlaylistOutputBoundary for OutputBoundary
-where
-    OutputBoundary: Activate + Update<PlaylistDownloadEvent> + Update<VideoDownloadEvent> + Update<DiagnosticEvent>,
+impl<OutputBoundary> DownloadPlaylistOutputBoundary for OutputBoundary where
+    OutputBoundary: Activate + Update<PlaylistDownloadEvent> + Update<VideoDownloadEvent> + Update<DiagnosticEvent>
 {
 }
 

@@ -23,8 +23,13 @@ pub mod extensions {
                 Some(val) => Ok(val),
                 None => {
                     let location = ::std::panic::Location::caller();
-                    Err(::anyhow::anyhow!("called `OptionExt::some()` on a `None` value at {}:{}:{}", location.file(), location.line(), location.column()))
-                }
+                    Err(::anyhow::anyhow!(
+                        "called `OptionExt::some()` on a `None` value at {}:{}:{}",
+                        location.file(),
+                        location.line(),
+                        location.column()
+                    ))
+                },
             }
         }
     }

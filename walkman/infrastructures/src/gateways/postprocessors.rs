@@ -1,6 +1,8 @@
 use ::async_trait::async_trait;
 use ::derive_new::new;
-use ::use_cases::{gateways::PostProcessor, models::descriptors::{ResolvedPlaylist, ResolvedVideo}};
+use ::use_cases::gateways::PostProcessor;
+use ::use_cases::models::descriptors::ResolvedPlaylist;
+use ::use_cases::models::descriptors::ResolvedVideo;
 
 use crate::utils::aliases::Fallible;
 
@@ -28,10 +30,11 @@ impl PostProcessor<ResolvedVideo> for Id3MetadataWriter {
 #[async_trait]
 impl PostProcessor<ResolvedPlaylist> for Id3MetadataWriter {
     async fn process(self: ::std::sync::Arc<Self>, playlist: &ResolvedPlaylist) -> Fallible<()> {
-        use ::rayon::iter::ParallelIterator as _;
         use ::rayon::iter::IntoParallelIterator as _;
+        use ::rayon::iter::ParallelIterator as _;
 
-        playlist.videos
+        playlist
+            .videos
             .as_deref()
             .into_par_iter()
             .flatten()
@@ -42,7 +45,7 @@ impl PostProcessor<ResolvedPlaylist> for Id3MetadataWriter {
 impl Id3MetadataWriter {
     fn write(self: ::std::sync::Arc<Self>, video: &ResolvedVideo, playlist: Option<&ResolvedPlaylist>) -> Fallible<()> {
         use ::id3::TagLike as _;
-        
+
         let mut tag = ::id3::Tag::new();
 
         video.metadata.title.as_deref().map(|title| tag.set_title(title));
@@ -59,14 +62,14 @@ impl Id3MetadataWriter {
             },
         }
 
-        video.metadata.artists
+        video
+            .metadata
+            .artists
             .as_deref()
             .map(|artists| artists.join(", "))
             .map(|artists| tag.set_artist(artists));
 
-        video.metadata.genres
-            .as_deref()
-            .map(|genres| tag.set_genre(genres.join(", ")));
+        video.metadata.genres.as_deref().map(|genres| tag.set_genre(genres.join(", ")));
 
         tag.write_to_path(&video.path, ::id3::Version::Id3v23)?;
 

@@ -1,7 +1,11 @@
 pub mod events {
     use ::domain::VideoId;
 
-    use crate::{models::descriptors::{PartiallyResolvedPlaylist, PartiallyResolvedVideo, ResolvedPlaylist, ResolvedVideo}, utils::aliases::MaybeOwnedString};
+    use crate::models::descriptors::PartiallyResolvedPlaylist;
+    use crate::models::descriptors::PartiallyResolvedVideo;
+    use crate::models::descriptors::ResolvedPlaylist;
+    use crate::models::descriptors::ResolvedVideo;
+    use crate::utils::aliases::MaybeOwnedString;
 
     #[derive(Debug, Clone)]
     pub enum VideoDownloadEvent {
@@ -71,9 +75,15 @@ pub mod events {
 }
 
 pub mod descriptors {
-    use ::domain::{ChannelId, ChannelMetadata, PlaylistId, PlaylistMetadata, VideoId, VideoMetadata};
+    use ::domain::ChannelId;
+    use ::domain::ChannelMetadata;
+    use ::domain::PlaylistId;
+    use ::domain::PlaylistMetadata;
+    use ::domain::VideoId;
+    use ::domain::VideoMetadata;
 
-    use crate::utils::aliases::{MaybeOwnedString, MaybeOwnedVec};
+    use crate::utils::aliases::MaybeOwnedString;
+    use crate::utils::aliases::MaybeOwnedVec;
 
     #[derive(Debug, Clone)]
     pub struct UnresolvedVideo {

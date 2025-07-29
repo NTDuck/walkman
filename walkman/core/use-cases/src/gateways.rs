@@ -10,12 +10,16 @@ use crate::utils::aliases::Fallible;
 
 #[async_trait]
 pub trait VideoDownloader: Send + Sync {
-    async fn download(self: ::std::sync::Arc<Self>, video: UnresolvedVideo) -> Fallible<(BoxedStream<VideoDownloadEvent>, BoxedStream<DiagnosticEvent>)>;
+    async fn download(
+        self: ::std::sync::Arc<Self>, video: UnresolvedVideo,
+    ) -> Fallible<(BoxedStream<VideoDownloadEvent>, BoxedStream<DiagnosticEvent>)>;
 }
 
 #[async_trait]
 pub trait PlaylistDownloader: Send + Sync {
-    async fn download(self: ::std::sync::Arc<Self>, playlist: UnresolvedPlaylist) -> Fallible<(BoxedStream<PlaylistDownloadEvent>, BoxedStream<VideoDownloadEvent>, BoxedStream<DiagnosticEvent>)>;
+    async fn download(
+        self: ::std::sync::Arc<Self>, playlist: UnresolvedPlaylist,
+    ) -> Fallible<(BoxedStream<PlaylistDownloadEvent>, BoxedStream<VideoDownloadEvent>, BoxedStream<DiagnosticEvent>)>;
 }
 
 #[async_trait]

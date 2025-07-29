@@ -39,13 +39,14 @@ pub struct DownloadVideoView {
 
 impl DownloadVideoView {
     pub fn new() -> Fallible<Self> {
-        static PROGRESS_BAR_STYLE: ::once_cell::sync::Lazy<::indicatif::ProgressStyle> = lazy_progress_style!("{prefix} {bar:50} {msg}");
-        
+        static PROGRESS_BAR_STYLE: ::once_cell::sync::Lazy<::indicatif::ProgressStyle> =
+            lazy_progress_style!("{prefix} {bar:50} {msg}");
+
         let progress_bars = ::indicatif::MultiProgress::new();
         progress_bars.set_draw_target(::indicatif::ProgressDrawTarget::hidden());
 
-        let video_progress_bar = progress_bars.add(::indicatif::ProgressBar::new(100)
-            .with_style(PROGRESS_BAR_STYLE.clone()));
+        let video_progress_bar =
+            progress_bars.add(::indicatif::ProgressBar::new(100).with_style(PROGRESS_BAR_STYLE.clone()));
 
         video_progress_bar.disable_steady_tick();
 
@@ -95,10 +96,12 @@ impl Update<VideoDownloadStartedEvent> for DownloadVideoView {
 
         let VideoDownloadStartedEvent { video } = event;
 
-        let title = video.metadata.title
+        let title = video
+            .metadata
+            .title
             .as_deref()
             .map_or_else(|| NULL.clone(), |title| title.white().bold());
-        
+
         self.video_progress_bar.println(format!("Downloading video: {}", title));
 
         Ok(())
@@ -108,16 +111,23 @@ impl Update<VideoDownloadStartedEvent> for DownloadVideoView {
 #[async_trait]
 impl Update<VideoDownloadProgressUpdatedEvent> for DownloadVideoView {
     async fn update(self: ::std::sync::Arc<Self>, event: &VideoDownloadProgressUpdatedEvent) -> Fallible<()> {
-        let VideoDownloadProgressUpdatedEvent { eta, downloaded_bytes, total_bytes, bytes_per_second, .. } = event;
+        let VideoDownloadProgressUpdatedEvent {
+            eta,
+            downloaded_bytes,
+            total_bytes,
+            bytes_per_second,
+            ..
+        } = event;
 
         let percentage = *downloaded_bytes as f64 / *total_bytes as f64 * 100.0;
         let percentage = FormattedPercentage(percentage as u64);
-        let eta= FormattedDuration(*eta);
+        let eta = FormattedDuration(*eta);
         let downloaded_bytes = FormattedBytes(*downloaded_bytes);
         let speed = FormattedBytesPerSecond(*bytes_per_second);
 
         self.video_progress_bar.set_position(*percentage);
-        self.video_progress_bar.set_prefix(format!("{:<24} {}", format!("{} @ {}", downloaded_bytes, speed), eta));
+        self.video_progress_bar
+            .set_prefix(format!("{:<24} {}", format!("{} @ {}", downloaded_bytes, speed), eta));
         self.video_progress_bar.set_message(format!("{}", percentage));
 
         Ok(())
@@ -129,11 +139,14 @@ impl Update<VideoDownloadCompletedEvent> for DownloadVideoView {
     async fn update(self: ::std::sync::Arc<Self>, _: &VideoDownloadCompletedEvent) -> Fallible<()> {
         use ::colored::Colorize as _;
 
-        static PROGRESS_BAR_FINISH_STYLE: ::once_cell::sync::Lazy<::indicatif::ProgressStyle> = lazy_progress_style!("{prefix} {bar:50.green} {msg}");
-        
+        static PROGRESS_BAR_FINISH_STYLE: ::once_cell::sync::Lazy<::indicatif::ProgressStyle> =
+            lazy_progress_style!("{prefix} {bar:50.green} {msg}");
+
         self.video_progress_bar.set_style(PROGRESS_BAR_FINISH_STYLE.clone());
-        self.video_progress_bar.set_prefix(self.video_progress_bar.prefix().green().to_string());
-        self.video_progress_bar.set_message(self.video_progress_bar.message().green().to_string());
+        self.video_progress_bar
+            .set_prefix(self.video_progress_bar.prefix().green().to_string());
+        self.video_progress_bar
+            .set_message(self.video_progress_bar.message().green().to_string());
 
         self.video_progress_bar.finish();
 
@@ -146,7 +159,8 @@ impl Update<DiagnosticEvent> for DownloadVideoView {
     async fn update(self: ::std::sync::Arc<Self>, event: &DiagnosticEvent) -> Fallible<()> {
         use ::colored::Colorize as _;
 
-        static DECOY_PROGRESS_BAR_STYLE: ::once_cell::sync::Lazy<::indicatif::ProgressStyle> = lazy_progress_style!("{msg}");
+        static DECOY_PROGRESS_BAR_STYLE: ::once_cell::sync::Lazy<::indicatif::ProgressStyle> =
+            lazy_progress_style!("{msg}");
 
         let DiagnosticEvent { message, level } = event;
 
@@ -155,8 +169,9 @@ impl Update<DiagnosticEvent> for DownloadVideoView {
             DiagnosticLevel::Error => message.red(),
         };
 
-        let decoy_progress_bar = self.progress_bars.add(::indicatif::ProgressBar::no_length()
-            .with_style(DECOY_PROGRESS_BAR_STYLE.clone()));
+        let decoy_progress_bar = self
+            .progress_bars
+            .add(::indicatif::ProgressBar::no_length().with_style(DECOY_PROGRESS_BAR_STYLE.clone()));
 
         decoy_progress_bar.finish_with_message(format!("{}", message));
 
@@ -167,25 +182,31 @@ impl Update<DiagnosticEvent> for DownloadVideoView {
 pub struct DownloadPlaylistView {
     progress_bars: ::indicatif::MultiProgress,
     playlist_progress_bar: ::indicatif::ProgressBar,
-    video_progress_bars: ::std::sync::Arc<::tokio::sync::Mutex<::std::collections::HashMap<MaybeOwnedString, ::indicatif::ProgressBar>>>,
+    video_progress_bars:
+        ::std::sync::Arc<::tokio::sync::Mutex<::std::collections::HashMap<MaybeOwnedString, ::indicatif::ProgressBar>>>,
 }
 
 impl DownloadPlaylistView {
     pub fn new() -> Fallible<Self> {
-        static PROGRESS_BAR_STYLE: ::once_cell::sync::Lazy<::indicatif::ProgressStyle> = lazy_progress_style!("{prefix} {bar:50} {msg}");
-        
+        static PROGRESS_BAR_STYLE: ::once_cell::sync::Lazy<::indicatif::ProgressStyle> =
+            lazy_progress_style!("{prefix} {bar:50} {msg}");
+
         let progress_bars = ::indicatif::MultiProgress::new();
         progress_bars.set_draw_target(::indicatif::ProgressDrawTarget::hidden());
 
-        let playlist_progress_bar = progress_bars.add(::indicatif::ProgressBar::no_length()
-            .with_style(PROGRESS_BAR_STYLE.clone()));
+        let playlist_progress_bar =
+            progress_bars.add(::indicatif::ProgressBar::no_length().with_style(PROGRESS_BAR_STYLE.clone()));
 
         playlist_progress_bar.set_prefix(format!("{:<33}", ""));
         playlist_progress_bar.set_message("??/??");
 
         let video_progress_bars = ::std::sync::Arc::new(::tokio::sync::Mutex::new(::std::collections::HashMap::new()));
 
-        Ok(Self { progress_bars, playlist_progress_bar, video_progress_bars })
+        Ok(Self {
+            progress_bars,
+            playlist_progress_bar,
+            video_progress_bars,
+        })
     }
 }
 
@@ -195,7 +216,9 @@ impl Activate for DownloadPlaylistView {
         self.progress_bars.set_draw_target(::indicatif::ProgressDrawTarget::stderr());
 
         self.playlist_progress_bar.tick();
-        self.video_progress_bars.lock().await
+        self.video_progress_bars
+            .lock()
+            .await
             .iter()
             .for_each(|(_, video_progress_bar)| video_progress_bar.tick());
 
@@ -227,15 +250,14 @@ impl Update<PlaylistDownloadStartedEvent> for DownloadPlaylistView {
 
         let PlaylistDownloadStartedEvent { playlist } = event;
 
-        let title = playlist.metadata.title
+        let title = playlist
+            .metadata
+            .title
             .as_deref()
             .map(|title| title.white().bold())
             .unwrap_or_else(|| NULL.clone());
 
-        let length = playlist.videos
-            .as_deref()
-            .map(|videos| videos.len())
-            .unwrap_or_default();
+        let length = playlist.videos.as_deref().map(|videos| videos.len()).unwrap_or_default();
 
         self.playlist_progress_bar.set_length(length as u64);
         self.playlist_progress_bar.set_message(format!("{}/{}", 0, length));
@@ -251,7 +273,8 @@ impl Update<PlaylistDownloadProgressUpdatedEvent> for DownloadPlaylistView {
         let PlaylistDownloadProgressUpdatedEvent { completed_videos, total_videos, .. } = event;
 
         self.playlist_progress_bar.set_position(*completed_videos as u64);
-        self.playlist_progress_bar.set_message(format!("{}/{}", completed_videos, total_videos));
+        self.playlist_progress_bar
+            .set_message(format!("{}/{}", completed_videos, total_videos));
 
         Ok(())
     }
@@ -264,11 +287,14 @@ impl Update<PlaylistDownloadCompletedEvent> for DownloadPlaylistView {
 
         println!("Completed");
 
-        static PROGRESS_BAR_FINISH_STYLE: ::once_cell::sync::Lazy<::indicatif::ProgressStyle> = lazy_progress_style!("{prefix} {bar:50.green} {msg}");
+        static PROGRESS_BAR_FINISH_STYLE: ::once_cell::sync::Lazy<::indicatif::ProgressStyle> =
+            lazy_progress_style!("{prefix} {bar:50.green} {msg}");
 
         self.playlist_progress_bar.set_style(PROGRESS_BAR_FINISH_STYLE.clone());
-        self.playlist_progress_bar.set_prefix(self.playlist_progress_bar.prefix().green().to_string());
-        self.playlist_progress_bar.set_message(self.playlist_progress_bar.message().green().to_string());
+        self.playlist_progress_bar
+            .set_prefix(self.playlist_progress_bar.prefix().green().to_string());
+        self.playlist_progress_bar
+            .set_message(self.playlist_progress_bar.message().green().to_string());
 
         self.playlist_progress_bar.finish();
 
@@ -292,12 +318,18 @@ impl Update<VideoDownloadStartedEvent> for DownloadPlaylistView {
     async fn update(self: ::std::sync::Arc<Self>, event: &VideoDownloadStartedEvent) -> Fallible<()> {
         use ::colored::Colorize as _;
 
-        static PROGRESS_BAR_STYLE: ::once_cell::sync::Lazy<::indicatif::ProgressStyle> = lazy_progress_style!("{prefix} {bar:50} {msg}");
+        static PROGRESS_BAR_STYLE: ::once_cell::sync::Lazy<::indicatif::ProgressStyle> =
+            lazy_progress_style!("{prefix} {bar:50} {msg}");
 
-        let video_progress_bar = self.video_progress_bars.lock().await
+        let video_progress_bar = self
+            .video_progress_bars
+            .lock()
+            .await
             .entry(event.video.id.clone())
             .or_insert({
-                let progress_bar = self.progress_bars.insert_before(&self.playlist_progress_bar, ::indicatif::ProgressBar::new(100));
+                let progress_bar = self
+                    .progress_bars
+                    .insert_before(&self.playlist_progress_bar, ::indicatif::ProgressBar::new(100));
 
                 progress_bar.disable_steady_tick();
 
@@ -305,7 +337,10 @@ impl Update<VideoDownloadStartedEvent> for DownloadPlaylistView {
             })
             .clone();
 
-        let title = event.video.metadata.title
+        let title = event
+            .video
+            .metadata
+            .title
             .as_deref()
             .map(|title| title.white().bold())
             .unwrap_or_else(|| NULL.clone());
@@ -328,24 +363,25 @@ impl Update<VideoDownloadStartedEvent> for DownloadPlaylistView {
 #[async_trait]
 impl Update<VideoDownloadProgressUpdatedEvent> for DownloadPlaylistView {
     async fn update(self: ::std::sync::Arc<Self>, event: &VideoDownloadProgressUpdatedEvent) -> Fallible<()> {
-        let VideoDownloadProgressUpdatedEvent { id, eta, downloaded_bytes, total_bytes, bytes_per_second, .. } = event;
+        let VideoDownloadProgressUpdatedEvent {
+            id,
+            eta,
+            downloaded_bytes,
+            total_bytes,
+            bytes_per_second,
+            ..
+        } = event;
 
-        let video_progress_bar = self.video_progress_bars.lock().await
-            .get(id)
-            .ok()?
-            .clone();
+        let video_progress_bar = self.video_progress_bars.lock().await.get(id).ok()?.clone();
 
         let percentage = *downloaded_bytes as f64 / *total_bytes as f64 * 100.0;
         let percentage = FormattedPercentage(percentage as u64);
-        let eta= FormattedDuration(*eta);
+        let eta = FormattedDuration(*eta);
         let downloaded_bytes = FormattedBytes(*downloaded_bytes);
         let speed = FormattedBytesPerSecond(*bytes_per_second);
 
         let message = video_progress_bar.message();
-        let idx = message.char_indices()
-            .nth(4)
-            .map(|(idx, _)| idx)
-            .ok()?;
+        let idx = message.char_indices().nth(4).map(|(idx, _)| idx).ok()?;
         let message = format!("{:>3}{}", percentage, &message[idx..]);
 
         video_progress_bar.set_position(*percentage);
@@ -361,13 +397,11 @@ impl Update<VideoDownloadCompletedEvent> for DownloadPlaylistView {
     async fn update(self: ::std::sync::Arc<Self>, event: &VideoDownloadCompletedEvent) -> Fallible<()> {
         use ::colored::Colorize as _;
 
-        static PROGRESS_BAR_FINISH_STYLE: ::once_cell::sync::Lazy<::indicatif::ProgressStyle> = lazy_progress_style!("{prefix} {bar:50.green} {msg}");
+        static PROGRESS_BAR_FINISH_STYLE: ::once_cell::sync::Lazy<::indicatif::ProgressStyle> =
+            lazy_progress_style!("{prefix} {bar:50.green} {msg}");
 
-        let video_progress_bar = self.video_progress_bars.lock().await
-            .get(&event.video.id)
-            .ok()?
-            .clone();
-        
+        let video_progress_bar = self.video_progress_bars.lock().await.get(&event.video.id).ok()?.clone();
+
         video_progress_bar.set_style(PROGRESS_BAR_FINISH_STYLE.clone());
         video_progress_bar.set_prefix(video_progress_bar.prefix().green().to_string());
         video_progress_bar.set_message(video_progress_bar.message().green().to_string());
@@ -383,7 +417,8 @@ impl Update<DiagnosticEvent> for DownloadPlaylistView {
     async fn update(self: ::std::sync::Arc<Self>, event: &DiagnosticEvent) -> Fallible<()> {
         use ::colored::Colorize as _;
 
-        static DECOY_PROGRESS_BAR_STYLE: ::once_cell::sync::Lazy<::indicatif::ProgressStyle> = lazy_progress_style!("{msg}");
+        static DECOY_PROGRESS_BAR_STYLE: ::once_cell::sync::Lazy<::indicatif::ProgressStyle> =
+            lazy_progress_style!("{msg}");
 
         let DiagnosticEvent { message, level } = event;
 
@@ -392,8 +427,9 @@ impl Update<DiagnosticEvent> for DownloadPlaylistView {
             DiagnosticLevel::Error => message.red(),
         };
 
-        let decoy_progress_bar = self.progress_bars.add(::indicatif::ProgressBar::no_length()
-            .with_style(DECOY_PROGRESS_BAR_STYLE.clone()));
+        let decoy_progress_bar = self
+            .progress_bars
+            .add(::indicatif::ProgressBar::no_length().with_style(DECOY_PROGRESS_BAR_STYLE.clone()));
 
         decoy_progress_bar.finish_with_message(format!("{}", message));
 

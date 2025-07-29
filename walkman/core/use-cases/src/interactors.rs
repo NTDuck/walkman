@@ -29,15 +29,15 @@ pub struct DownloadVideoInteractor {
 }
 
 #[async_trait]
-impl Accept<DownloadVideoRequestModel> for DownloadVideoInteractor
-{
+impl Accept<DownloadVideoRequestModel> for DownloadVideoInteractor {
     async fn accept(self: ::std::sync::Arc<Self>, request: DownloadVideoRequestModel) -> Fallible<()> {
         ::std::sync::Arc::clone(&self.output_boundary).activate().await?;
 
         let DownloadVideoRequestModel { url } = request;
         let video = UnresolvedVideo { url };
 
-        let (video_download_events, diagnostic_events) = ::std::sync::Arc::clone(&self.downloader).download(video).await?;
+        let (video_download_events, diagnostic_events) =
+            ::std::sync::Arc::clone(&self.downloader).download(video).await?;
 
         ::tokio::try_join!(
             ::std::sync::Arc::clone(&self).accept(video_download_events),
@@ -59,7 +59,7 @@ impl Accept<BoxedStream<VideoDownloadEvent>> for DownloadVideoInteractor {
 
         while let Some(event) = events.next().await {
             ::std::sync::Arc::clone(&self.output_boundary).update(&event).await?;
-            
+
             if let VideoDownloadEvent::Completed(event) = event {
                 for postprocessor in self.postprocessors.iter() {
                     ::std::sync::Arc::clone(postprocessor).process(&event.video).await?;
@@ -102,7 +102,8 @@ impl Accept<DownloadPlaylistRequestModel> for DownloadPlaylistInteractor {
         let DownloadPlaylistRequestModel { url } = request;
         let playlist = UnresolvedPlaylist { url };
 
-        let (playlist_download_events, video_download_events, diagnostic_events) = ::std::sync::Arc::clone(&self.downloader).download(playlist).await?;
+        let (playlist_download_events, video_download_events, diagnostic_events) =
+            ::std::sync::Arc::clone(&self.downloader).download(playlist).await?;
 
         ::tokio::try_join!(
             ::std::sync::Arc::clone(&self).accept(playlist_download_events),

@@ -1,10 +1,8 @@
-
-use ::std::ops::Not;
-
 use ::async_trait::async_trait;
 use ::derive_new::new;
 use ::domain::PlaylistMetadata;
 use ::domain::VideoMetadata;
+use ::std::ops::Not;
 use ::use_cases::gateways::PlaylistDownloader;
 use ::use_cases::gateways::VideoDownloader;
 use ::use_cases::models::descriptors::PartiallyResolvedPlaylist;
@@ -84,7 +82,6 @@ impl VideoDownloader for YtdlpDownloader {
                             .await
                             .map_err(::anyhow::Error::from)
                     },
-                    
                     async {
                         stderr
                             .filter_map(|line| async { DiagnosticEvent::from_line(line) })
@@ -108,7 +105,8 @@ impl VideoDownloader for YtdlpDownloader {
 impl PlaylistDownloader for YtdlpDownloader {
     async fn download(
         self: ::std::sync::Arc<Self>, playlist: UnresolvedPlaylist,
-    ) -> Fallible<(BoxedStream<PlaylistDownloadEvent>, BoxedStream<VideoDownloadEvent>, BoxedStream<DiagnosticEvent>)> {
+    ) -> Fallible<(BoxedStream<PlaylistDownloadEvent>, BoxedStream<VideoDownloadEvent>, BoxedStream<DiagnosticEvent>)>
+    {
         use ::futures::StreamExt as _;
         use ::futures::TryStreamExt as _;
 
@@ -116,6 +114,7 @@ impl PlaylistDownloader for YtdlpDownloader {
         let (video_download_events_tx, video_download_events_rx) = ::tokio::sync::mpsc::unbounded_channel();
         let (diagnostic_events_tx, diagnostic_events_rx) = ::tokio::sync::mpsc::unbounded_channel();
 
+        #[rustfmt::skip]
         let (stdout, stderr) = TokioCommandExecutor::execute("yt-dlp", [
             &*playlist.url,
             "--paths", self.configurations.directory.to_str().ok()?,
@@ -140,7 +139,6 @@ impl PlaylistDownloader for YtdlpDownloader {
 
                         Ok(playlist)
                     },
-
                     async {
                         stderr
                             .filter_map(|line| async { DiagnosticEvent::from_line(line) })
@@ -157,20 +155,22 @@ impl PlaylistDownloader for YtdlpDownloader {
         .await??;
 
         let completed = ::std::sync::Arc::new(::std::sync::atomic::AtomicU64::new(0));
-        let total = playlist.videos.as_deref()
-            .map(|videos| videos.len() as u64)
-            .unwrap_or_default();
+        let total = playlist.videos.as_deref().map(|videos| videos.len() as u64).unwrap_or_default();
 
         let resolved_videos: ::std::sync::Arc<::tokio::sync::Mutex<Vec<_>>> =
             ::std::sync::Arc::new(::tokio::sync::Mutex::new(Vec::with_capacity(total as usize)));
 
         let unresolved_videos: ::std::sync::Arc<::tokio::sync::Mutex<::std::collections::VecDeque<_>>> =
-            ::std::sync::Arc::new(::tokio::sync::Mutex::new(playlist.videos.as_deref()
-                .map(|videos| videos.iter().cloned().collect())
-                .unwrap_or_default()));
-        
+            ::std::sync::Arc::new(::tokio::sync::Mutex::new(
+                playlist
+                    .videos
+                    .as_deref()
+                    .map(|videos| videos.iter().cloned().collect())
+                    .unwrap_or_default(),
+            ));
+
         let queue_emptied_notify = ::std::sync::Arc::new(::tokio::sync::Notify::new());
-        
+
         (0..self.configurations.workers).for_each(|_| {
             ::tokio::spawn({
                 let this = ::std::sync::Arc::clone(&self);
@@ -188,16 +188,19 @@ impl PlaylistDownloader for YtdlpDownloader {
                     loop {
                         let (video, queue_emptied_by_this_worker) = {
                             let mut unresolved_videos = unresolved_videos.lock().await;
-                            
+
                             let video = unresolved_videos.pop_front();
                             let queue_emptied_by_this_worker = unresolved_videos.is_empty();
 
                             (video, queue_emptied_by_this_worker)
                         };
 
-                        let Some(video) = video else { break };
-                        let (video_download_events, diagnostic_events) = VideoDownloader::download(::std::sync::Arc::clone(&this), video).await?;
-                        
+                        let Some(video) = video else {
+                            break;
+                        };
+                        let (video_download_events, diagnostic_events) =
+                            VideoDownloader::download(::std::sync::Arc::clone(&this), video).await?;
+
                         ::tokio::try_join!(
                             async {
                                 video_download_events
@@ -210,11 +213,13 @@ impl PlaylistDownloader for YtdlpDownloader {
 
                                                 let event = PlaylistDownloadProgressUpdatedEvent {
                                                     video: event.video.clone(),
-                                                    completed_videos: completed.load(::std::sync::atomic::Ordering::Relaxed),
+                                                    completed_videos: completed
+                                                        .load(::std::sync::atomic::Ordering::Relaxed),
                                                     total_videos: total,
                                                 };
 
-                                                playlist_download_events_tx.send(PlaylistDownloadEvent::ProgressUpdated(event))?;
+                                                playlist_download_events_tx
+                                                    .send(PlaylistDownloadEvent::ProgressUpdated(event))?;
                                             },
                                             _ => {},
                                         }
@@ -225,7 +230,6 @@ impl PlaylistDownloader for YtdlpDownloader {
                                     })
                                     .await
                             },
-
                             async {
                                 diagnostic_events
                                     .map(Ok)
@@ -234,7 +238,7 @@ impl PlaylistDownloader for YtdlpDownloader {
                                     .map_err(::anyhow::Error::from)
                             },
                         )?;
-                        
+
                         if queue_emptied_by_this_worker {
                             queue_emptied_notify.notify_one();
                         }
@@ -294,8 +298,8 @@ trait CommandExecutor {
 struct TokioCommandExecutor;
 
 impl CommandExecutor for TokioCommandExecutor {
-    type Stdout = ::tokio_stream::wrappers::UnboundedReceiverStream<MaybeOwnedString>;
     type Stderr = ::tokio_stream::wrappers::UnboundedReceiverStream<MaybeOwnedString>;
+    type Stdout = ::tokio_stream::wrappers::UnboundedReceiverStream<MaybeOwnedString>;
 
     fn execute<Program, Args>(program: Program, args: Args) -> Fallible<(Self::Stdout, Self::Stderr)>
     where
@@ -303,9 +307,9 @@ impl CommandExecutor for TokioCommandExecutor {
         Args: IntoIterator,
         Args::Item: AsRef<::std::ffi::OsStr>,
     {
-        use ::tokio::io::AsyncBufReadExt as _;
         use ::futures::StreamExt as _;
         use ::futures::TryStreamExt as _;
+        use ::tokio::io::AsyncBufReadExt as _;
 
         let (stdout_tx, stdout_rx) = ::tokio::sync::mpsc::unbounded_channel();
         let (stderr_tx, stderr_rx) = ::tokio::sync::mpsc::unbounded_channel();
@@ -321,7 +325,7 @@ impl CommandExecutor for TokioCommandExecutor {
 
         ::tokio::task::spawn(async move {
             let lines = ::tokio::io::BufReader::new(stdout).lines();
-            
+
             ::tokio_stream::wrappers::LinesStream::new(lines)
                 .filter_map(|line| async move { line.ok() })
                 .map(|line| line.to_owned().into())
@@ -332,7 +336,7 @@ impl CommandExecutor for TokioCommandExecutor {
 
         ::tokio::task::spawn(async move {
             let lines = ::tokio::io::BufReader::new(stderr).lines();
-            
+
             ::tokio_stream::wrappers::LinesStream::new(lines)
                 .filter_map(|line| async move { line.ok() })
                 .map(|line| line.to_owned().into())
@@ -363,7 +367,8 @@ impl FromLine for VideoDownloadEvent {
     {
         let line = line.as_ref();
 
-        VideoDownloadProgressUpdatedEvent::from_line(line).map(Self::ProgressUpdated)
+        VideoDownloadProgressUpdatedEvent::from_line(line)
+            .map(Self::ProgressUpdated)
             .or(VideoDownloadStartedEvent::from_line(line).map(Self::Started))
             .or(VideoDownloadCompletedEvent::from_line(line).map(Self::Completed))
     }
@@ -387,12 +392,7 @@ impl FromLine for VideoDownloadStartedEvent {
         let video = PartiallyResolvedVideo {
             url,
             id,
-            metadata: VideoMetadata {
-                title,
-                album,
-                artists,
-                genres,
-            },
+            metadata: VideoMetadata { title, album, artists, genres },
         };
 
         Some(Self { video })
@@ -481,7 +481,7 @@ impl FromLine for DiagnosticEvent {
         };
 
         Some(Self { level, message })
-    }    
+    }
 }
 
 #[async_trait]
@@ -515,7 +515,6 @@ impl FromLines for PlaylistDownloadStartedEvent {
 
                 let video = UnresolvedVideo { url };
                 videos.push(video);
-
             } else if let Some(line) = line.as_ref().strip_prefix("[playlist-started:metadata]") {
                 let mut attrs = line.split(';');
 
@@ -532,7 +531,7 @@ impl FromLines for PlaylistDownloadStartedEvent {
                     videos,
                 };
 
-                return Some(Self { playlist })
+                return Some(Self { playlist });
             }
         }
 
@@ -544,11 +543,7 @@ impl FromLines for PlaylistDownloadStartedEvent {
 fn parse_multivalued_attr(string: &str) -> Option<MaybeOwnedVec<MaybeOwnedString>> {
     let attr = parse_attr(string)?;
 
-    let attrs = attr
-        .split(',')
-        .map(parse_attr)
-        .flatten()
-        .collect::<Vec<_>>();
+    let attrs = attr.split(',').map(parse_attr).flatten().collect::<Vec<_>>();
 
     Some(attrs.into())
 }
