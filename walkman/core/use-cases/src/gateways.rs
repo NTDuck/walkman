@@ -19,10 +19,20 @@ pub trait VideoDownloader: Send + Sync {
 pub trait PlaylistDownloader: Send + Sync {
     async fn download(
         self: ::std::sync::Arc<Self>, playlist: UnresolvedPlaylist,
-    ) -> Fallible<(BoxedStream<PlaylistDownloadEvent>, BoxedStream<VideoDownloadEvent>, BoxedStream<DiagnosticEvent>)>;
+    ) -> Fallible<(BoxedStream<VideoDownloadEvent>, BoxedStream<PlaylistDownloadEvent>, BoxedStream<DiagnosticEvent>)>;
 }
 
 #[async_trait]
-pub trait PostProcessor<Artifact>: Send + Sync {
-    async fn process(self: ::std::sync::Arc<Self>, artifact: &Artifact) -> Fallible<()>;
+pub trait PostProcessor<Resource>: Send + Sync {
+    async fn process(self: ::std::sync::Arc<Self>, resource: &Resource) -> Fallible<()>;
+}
+
+#[async_trait]
+pub trait ResourceRepository: Insert<UnresolvedVideo> + Insert<UnresolvedPlaylist> {
+    async fn get_all(self: ::std::sync::Arc<Self>) -> Fallible<(BoxedStream<UnresolvedVideo>, BoxedStream<UnresolvedPlaylist>)>;
+}
+
+#[async_trait]
+pub trait Insert<Resource>: Send + Sync {
+    async fn insert(self: ::std::sync::Arc<Self>, resource: Resource) -> Fallible<()>;
 }
