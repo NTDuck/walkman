@@ -49,8 +49,13 @@ impl DownloadVideoView {
 
         video_progress_bar.disable_steady_tick();
 
-        video_progress_bar.set_prefix(format!("{:<21} {:4}", format!("{} @ {}", "??MiB", "??MiB/s"), "??:??"));
-        video_progress_bar.set_message(format!("{:>3}%", "??"));
+        let percentage = FormattedUninitPercentage;
+        let downloaded_bytes = FormattedUninitBytes;
+        let speed = FormattedUninitBytesPerSecond;
+        let eta = FormattedUninitDuration;
+
+        video_progress_bar.set_prefix(format!("{:<24} {}", format!("{} @ {}", downloaded_bytes, speed), eta));
+        video_progress_bar.set_message(format!("{}", percentage));
 
         Ok(Self { progress_bars, video_progress_bar })
     }
@@ -106,13 +111,14 @@ impl Update<VideoDownloadProgressUpdatedEvent> for DownloadVideoView {
         let VideoDownloadProgressUpdatedEvent { eta, downloaded_bytes, total_bytes, bytes_per_second, .. } = event;
 
         let percentage = *downloaded_bytes as f64 / *total_bytes as f64 * 100.0;
-        let eta = ::humantime::format_duration(*eta);
-        let downloaded_bytes = ::bytesize::ByteSize::b(*downloaded_bytes);
-        let speed = ::bytesize::ByteSize::b(*bytes_per_second);
+        let percentage = FormattedPercentage(percentage as u64);
+        let eta= FormattedDuration(*eta);
+        let downloaded_bytes = FormattedBytes(*downloaded_bytes);
+        let speed = FormattedBytesPerSecond(*bytes_per_second);
 
-        self.video_progress_bar.set_position(percentage as u64);
-        self.video_progress_bar.set_prefix(format!("{:<21} {:4}", format!("{} @ {}", downloaded_bytes, speed), eta));
-        self.video_progress_bar.set_message(format!("{:>3}%", percentage));
+        self.video_progress_bar.set_position(*percentage);
+        self.video_progress_bar.set_prefix(format!("{:<24} {}", format!("{} @ {}", downloaded_bytes, speed), eta));
+        self.video_progress_bar.set_message(format!("{}", percentage));
 
         Ok(())
     }
@@ -174,7 +180,7 @@ impl DownloadPlaylistView {
         let playlist_progress_bar = progress_bars.add(::indicatif::ProgressBar::no_length()
             .with_style(PROGRESS_BAR_STYLE.clone()));
 
-        playlist_progress_bar.set_prefix(format!("{:<27}", ""));
+        playlist_progress_bar.set_prefix(format!("{:<33}", ""));
         playlist_progress_bar.set_message("??/??");
 
         let video_progress_bars = ::std::sync::Arc::new(::tokio::sync::Mutex::new(::std::collections::HashMap::new()));
@@ -305,10 +311,15 @@ impl Update<VideoDownloadStartedEvent> for DownloadPlaylistView {
             .unwrap_or_else(|| NULL.clone());
 
         video_progress_bar.set_style(PROGRESS_BAR_STYLE.clone());
-        
+
+        let percentage = FormattedUninitPercentage;
+        let downloaded_bytes = FormattedUninitBytes;
+        let speed = FormattedUninitBytesPerSecond;
+        let eta = FormattedUninitDuration;
+
         video_progress_bar.set_position(0);
-        video_progress_bar.set_prefix(format!("{:<21} {:4}", format!("{} @ {}", "??MiB", "??MiB/s"), "??:??"));
-        video_progress_bar.set_message(format!("{:>3}%  {}", "??", title));
+        video_progress_bar.set_prefix(format!("{:<24} {}", format!("{} @ {}", downloaded_bytes, speed), eta));
+        video_progress_bar.set_message(format!("{}  {}", percentage, title));
 
         Ok(())
     }
@@ -325,19 +336,20 @@ impl Update<VideoDownloadProgressUpdatedEvent> for DownloadPlaylistView {
             .clone();
 
         let percentage = *downloaded_bytes as f64 / *total_bytes as f64 * 100.0;
-        let eta = ::humantime::format_duration(*eta);
-        let downloaded_bytes = ::bytesize::ByteSize::b(*downloaded_bytes);
-        let speed = ::bytesize::ByteSize::b(*bytes_per_second);
+        let percentage = FormattedPercentage(percentage as u64);
+        let eta= FormattedDuration(*eta);
+        let downloaded_bytes = FormattedBytes(*downloaded_bytes);
+        let speed = FormattedBytesPerSecond(*bytes_per_second);
 
         let message = video_progress_bar.message();
         let idx = message.char_indices()
-            .nth(3)
+            .nth(4)
             .map(|(idx, _)| idx)
             .ok()?;
-        let message = format!("{:>3}{}", percentage as u64, &message[idx..]);
+        let message = format!("{:>3}{}", percentage, &message[idx..]);
 
-        video_progress_bar.set_position(percentage as u64);
-        video_progress_bar.set_prefix(format!("{:<21} {:4}", format!("{} @ {}", downloaded_bytes, speed), eta));
+        video_progress_bar.set_position(*percentage);
+        video_progress_bar.set_prefix(format!("{:<24} {}", format!("{} @ {}", downloaded_bytes, speed), eta));
         video_progress_bar.set_message(message);
 
         Ok(())
@@ -390,3 +402,81 @@ impl Update<DiagnosticEvent> for DownloadPlaylistView {
 }
 
 static NULL: ::once_cell::sync::Lazy<::colored::ColoredString> = lazy_color!("N/A".yellow().bold());
+
+struct FormattedPercentage(u64);
+
+impl ::std::ops::Deref for FormattedPercentage {
+    type Target = u64;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl ::std::fmt::Display for FormattedPercentage {
+    fn fmt(&self, formatter: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+        write!(formatter, "{:>3}%", self.0)
+    }
+}
+
+struct FormattedUninitPercentage;
+
+impl ::std::fmt::Display for FormattedUninitPercentage {
+    fn fmt(&self, formatter: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+        write!(formatter, "{:>3}%", "??")
+    }
+}
+
+struct FormattedDuration(::std::time::Duration);
+
+impl ::std::fmt::Display for FormattedDuration {
+    fn fmt(&self, formatter: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+        let duration = ::time::Duration::try_from(self.0).unwrap();
+
+        let hours = duration.whole_hours() % 24;
+        let minutes = duration.whole_minutes() % 60;
+        let seconds = duration.whole_seconds() % 60;
+
+        write!(formatter, "{:02}:{:02}:{:02}", hours, minutes, seconds)
+    }
+}
+
+struct FormattedUninitDuration;
+
+impl ::std::fmt::Display for FormattedUninitDuration {
+    fn fmt(&self, formatter: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+        write!(formatter, "{:02}:{:02}:{:02}", "??", "??", "??")
+    }
+}
+
+struct FormattedBytes(u64);
+
+impl ::std::fmt::Display for FormattedBytes {
+    fn fmt(&self, formatter: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+        write!(formatter, "{}", ::bytesize::ByteSize::b(self.0))
+    }
+}
+
+struct FormattedUninitBytes;
+
+impl ::std::fmt::Display for FormattedUninitBytes {
+    fn fmt(&self, formatter: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+        write!(formatter, "{}", "??MiB")
+    }
+}
+
+struct FormattedBytesPerSecond(u64);
+
+impl ::std::fmt::Display for FormattedBytesPerSecond {
+    fn fmt(&self, formatter: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+        write!(formatter, "{}/s", FormattedBytes(self.0))
+    }
+}
+
+struct FormattedUninitBytesPerSecond;
+
+impl ::std::fmt::Display for FormattedUninitBytesPerSecond {
+    fn fmt(&self, formatter: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+        write!(formatter, "{}/s", FormattedUninitBytes)
+    }
+}
