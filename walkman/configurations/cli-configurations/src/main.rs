@@ -1,20 +1,20 @@
 pub(crate) mod utils;
 
-use infrastructures::boundaries::DownloadPlaylistView;
-use infrastructures::boundaries::DownloadVideoView;
-use infrastructures::gateways::downloaders::YtdlpConfigurations;
-use infrastructures::gateways::downloaders::YtdlpDownloader;
-use infrastructures::gateways::postprocessors::AlbumNamingPolicy;
-use infrastructures::gateways::postprocessors::Id3MetadataWriter;
-use infrastructures::gateways::postprocessors::Id3MetadataWriterConfigurations;
+use ::infrastructures::boundaries::DownloadPlaylistView;
+use ::infrastructures::boundaries::DownloadVideoView;
+use ::infrastructures::gateways::downloaders::YtdlpConfigurations;
+use ::infrastructures::gateways::downloaders::YtdlpDownloader;
+use ::infrastructures::gateways::postprocessors::AlbumNamingPolicy;
+use ::infrastructures::gateways::postprocessors::Id3MetadataWriter;
+use ::infrastructures::gateways::postprocessors::Id3MetadataWriterConfigurations;
 use ::use_cases::boundaries::Accept;
 use ::use_cases::boundaries::DownloadPlaylistRequestModel;
 use ::use_cases::boundaries::DownloadVideoRequestModel;
-use use_cases::gateways::PostProcessor;
+use ::use_cases::gateways::PostProcessor;
 use ::use_cases::interactors::DownloadPlaylistInteractor;
 use ::use_cases::interactors::DownloadVideoInteractor;
-use use_cases::models::descriptors::ResolvedPlaylist;
-use use_cases::models::descriptors::ResolvedVideo;
+use ::use_cases::models::descriptors::ResolvedPlaylist;
+use ::use_cases::models::descriptors::ResolvedVideo;
 
 use crate::utils::aliases::Fallible;
 use crate::utils::extensions::OptionExt;
@@ -51,8 +51,7 @@ async fn main() -> Fallible<()> {
         .arg(
             ::clap::Arg::new("workers")
                 .short('N')
-                // .default_value(&*format!("{}", ::num_cpus::get()))
-                .default_value("4")
+                .required(false)
                 .value_parser(::clap::value_parser!(u64))
         )
         .arg(
@@ -74,7 +73,9 @@ async fn main() -> Fallible<()> {
     let downloader = ::std::sync::Arc::new(YtdlpDownloader::new(
         YtdlpConfigurations {
             directory: matches.get_one::<::std::path::PathBuf>("directory").ok()?.to_owned().into(),
-            workers: *matches.get_one::<u64>("workers").ok()?,
+            workers: matches.get_one::<u64>("workers").ok()
+                .map(|workers| *workers)
+                .unwrap_or_else(|_| ::num_cpus::get() as u64),
             per_worker_cooldown: matches.get_one::<u64>("per-worker-cooldown")
                 .map(|cooldown| ::std::time::Duration::from_millis(*cooldown)).ok()?,
         },
