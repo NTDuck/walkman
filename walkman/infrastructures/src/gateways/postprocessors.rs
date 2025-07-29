@@ -48,26 +48,30 @@ impl Id3MetadataWriter {
 
         let mut tag = ::id3::Tag::new();
 
-        if let Some(title) = video.metadata.title.as_deref() { tag.set_title(title) }
+        if let Some(title) = video.metadata.title.as_deref() {
+            tag.set_title(title)
+        }
 
         match self.configurations.policy {
-            AlbumNamingPolicy::UseVideoAlbum => {
-                if let Some(album) = video.metadata.album.as_deref() { tag.set_album(album) }
-            },
+            AlbumNamingPolicy::UseVideoAlbum =>
+                if let Some(album) = video.metadata.album.as_deref() {
+                    tag.set_album(album)
+                },
 
             AlbumNamingPolicy::UsePlaylistTitle => {
-                if let Some(title) = playlist
-                    .and_then(|playlist| playlist.metadata.title.as_deref()) { tag.set_album(title) }
+                if let Some(title) = playlist.and_then(|playlist| playlist.metadata.title.as_deref()) {
+                    tag.set_album(title)
+                }
             },
         }
 
-        if let Some(artists) = video
-            .metadata
-            .artists
-            .as_deref()
-            .map(|artists| artists.join(", ")) { tag.set_artist(artists) }
+        if let Some(artists) = video.metadata.artists.as_deref().map(|artists| artists.join(", ")) {
+            tag.set_artist(artists)
+        }
 
-        if let Some(genres) = video.metadata.genres.as_deref() { tag.set_genre(genres.join(", ")) }
+        if let Some(genres) = video.metadata.genres.as_deref() {
+            tag.set_genre(genres.join(", "))
+        }
 
         tag.write_to_path(&video.path, ::id3::Version::Id3v23)?;
 
