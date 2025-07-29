@@ -272,7 +272,7 @@ impl Update<PlaylistDownloadProgressUpdatedEvent> for DownloadPlaylistView {
     async fn update(self: ::std::sync::Arc<Self>, event: &PlaylistDownloadProgressUpdatedEvent) -> Fallible<()> {
         let PlaylistDownloadProgressUpdatedEvent { completed_videos, total_videos, .. } = event;
 
-        self.playlist_progress_bar.set_position(*completed_videos as u64);
+        self.playlist_progress_bar.set_position(*completed_videos);
         self.playlist_progress_bar
             .set_message(format!("{}/{}", completed_videos, total_videos));
 
@@ -497,7 +497,7 @@ struct FormattedUninitBytes;
 
 impl ::std::fmt::Display for FormattedUninitBytes {
     fn fmt(&self, formatter: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
-        write!(formatter, "{}", "??MiB")
+        write!(formatter, "??MiB")
     }
 }
 

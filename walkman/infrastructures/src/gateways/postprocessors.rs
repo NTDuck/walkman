@@ -48,28 +48,26 @@ impl Id3MetadataWriter {
 
         let mut tag = ::id3::Tag::new();
 
-        video.metadata.title.as_deref().map(|title| tag.set_title(title));
+        if let Some(title) = video.metadata.title.as_deref() { tag.set_title(title) }
 
         match self.configurations.policy {
             AlbumNamingPolicy::UseVideoAlbum => {
-                video.metadata.album.as_deref().map(|album| tag.set_album(album));
+                if let Some(album) = video.metadata.album.as_deref() { tag.set_album(album) }
             },
 
             AlbumNamingPolicy::UsePlaylistTitle => {
-                playlist
-                    .and_then(|playlist| playlist.metadata.title.as_deref())
-                    .map(|title| tag.set_album(title));
+                if let Some(title) = playlist
+                    .and_then(|playlist| playlist.metadata.title.as_deref()) { tag.set_album(title) }
             },
         }
 
-        video
+        if let Some(artists) = video
             .metadata
             .artists
             .as_deref()
-            .map(|artists| artists.join(", "))
-            .map(|artists| tag.set_artist(artists));
+            .map(|artists| artists.join(", ")) { tag.set_artist(artists) }
 
-        video.metadata.genres.as_deref().map(|genres| tag.set_genre(genres.join(", ")));
+        if let Some(genres) = video.metadata.genres.as_deref() { tag.set_genre(genres.join(", ")) }
 
         tag.write_to_path(&video.path, ::id3::Version::Id3v23)?;
 

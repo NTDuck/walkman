@@ -54,7 +54,7 @@ impl VideoDownloader for YtdlpDownloader {
         #[rustfmt::skip]
         let (stdout, stderr) = TokioCommandExecutor::execute("yt-dlp", [
             &*video.url,
-            "--paths", &self.configurations.directory.to_str().ok()?,
+            "--paths", self.configurations.directory.to_str().ok()?,
             "--format", "bestaudio",
             "--extract-audio",
             "--audio-format", "mp3",
@@ -206,22 +206,19 @@ impl PlaylistDownloader for YtdlpDownloader {
                                 video_download_events
                                     .map(Ok)
                                     .try_for_each(|event| async {
-                                        match event {
-                                            VideoDownloadEvent::Completed(ref event) => {
-                                                completed.fetch_add(1, ::std::sync::atomic::Ordering::Relaxed);
-                                                resolved_videos.lock().await.push(event.video.clone());
+                                        if let VideoDownloadEvent::Completed(ref event) = event {
+                                            completed.fetch_add(1, ::std::sync::atomic::Ordering::Relaxed);
+                                            resolved_videos.lock().await.push(event.video.clone());
 
-                                                let event = PlaylistDownloadProgressUpdatedEvent {
-                                                    video: event.video.clone(),
-                                                    completed_videos: completed
-                                                        .load(::std::sync::atomic::Ordering::Relaxed),
-                                                    total_videos: total,
-                                                };
+                                            let event = PlaylistDownloadProgressUpdatedEvent {
+                                                video: event.video.clone(),
+                                                completed_videos: completed
+                                                    .load(::std::sync::atomic::Ordering::Relaxed),
+                                                total_videos: total,
+                                            };
 
-                                                playlist_download_events_tx
-                                                    .send(PlaylistDownloadEvent::ProgressUpdated(event))?;
-                                            },
-                                            _ => {},
+                                            playlist_download_events_tx
+                                                .send(PlaylistDownloadEvent::ProgressUpdated(event))?;
                                         }
 
                                         video_download_events_tx.send(event)?;
@@ -543,7 +540,7 @@ impl FromLines for PlaylistDownloadStartedEvent {
 fn parse_multivalued_attr(string: &str) -> Option<MaybeOwnedVec<MaybeOwnedString>> {
     let attr = parse_attr(string)?;
 
-    let attrs = attr.split(',').map(parse_attr).flatten().collect::<Vec<_>>();
+    let attrs = attr.split(',').filter_map(parse_attr).collect::<Vec<_>>();
 
     Some(attrs.into())
 }

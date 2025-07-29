@@ -72,8 +72,7 @@ async fn main() -> Fallible<()> {
         directory: matches.get_one::<::std::path::PathBuf>("directory").ok()?.to_owned().into(),
         workers: matches
             .get_one::<u64>("workers")
-            .ok()
-            .map(|workers| *workers)
+            .ok().copied()
             .unwrap_or_else(|_| ::num_cpus::get() as u64),
         per_worker_cooldown: matches
             .get_one::<u64>("per-worker-cooldown")
