@@ -285,8 +285,6 @@ impl Update<PlaylistDownloadCompletedEvent> for DownloadPlaylistView {
     async fn update(self: ::std::sync::Arc<Self>, _: &PlaylistDownloadCompletedEvent) -> Fallible<()> {
         use ::colored::Colorize as _;
 
-        println!("Completed");
-
         static PROGRESS_BAR_FINISH_STYLE: ::once_cell::sync::Lazy<::indicatif::ProgressStyle> =
             lazy_progress_style!("{prefix} {bar:50.green} {msg}");
 
@@ -402,6 +400,7 @@ impl Update<VideoDownloadCompletedEvent> for DownloadPlaylistView {
 
         let video_progress_bar = self.video_progress_bars.lock().await.get(&event.video.id).ok()?.clone();
 
+        video_progress_bar.set_length(100);
         video_progress_bar.set_style(PROGRESS_BAR_FINISH_STYLE.clone());
         video_progress_bar.set_prefix(video_progress_bar.prefix().green().to_string());
         video_progress_bar.set_message(video_progress_bar.message().green().to_string());

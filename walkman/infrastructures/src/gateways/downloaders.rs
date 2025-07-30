@@ -1,5 +1,4 @@
 use ::async_trait::async_trait;
-use ::derive_new::new;
 use ::domain::PlaylistMetadata;
 use ::domain::VideoMetadata;
 use ::std::ops::Not;
@@ -188,6 +187,7 @@ impl PlaylistDownloader for YtdlpDownloader {
                         let Some(video) = video else {
                             break;
                         };
+
                         let (video_download_events, diagnostic_events) =
                             VideoDownloader::download(::std::sync::Arc::clone(&this), video).await?;
 
