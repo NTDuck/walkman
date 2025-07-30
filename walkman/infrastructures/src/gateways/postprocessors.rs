@@ -1,17 +1,12 @@
 use ::async_trait::async_trait;
-use ::derive_new::new;
 use ::use_cases::gateways::PostProcessor;
 use ::use_cases::models::descriptors::ResolvedPlaylist;
 use ::use_cases::models::descriptors::ResolvedVideo;
+use ::rayon::prelude::*;
 
 use crate::utils::aliases::Fallible;
 
-#[derive(new)]
 pub struct Id3MetadataWriter {
-    configurations: Id3MetadataWriterConfigurations,
-}
-
-pub struct Id3MetadataWriterConfigurations {
     pub policy: AlbumNamingPolicy,
 }
 
@@ -30,9 +25,6 @@ impl PostProcessor<ResolvedVideo> for Id3MetadataWriter {
 #[async_trait]
 impl PostProcessor<ResolvedPlaylist> for Id3MetadataWriter {
     async fn process(self: ::std::sync::Arc<Self>, playlist: &ResolvedPlaylist) -> Fallible<()> {
-        use ::rayon::iter::IntoParallelIterator as _;
-        use ::rayon::iter::ParallelIterator as _;
-
         playlist
             .videos
             .as_deref()
@@ -52,7 +44,7 @@ impl Id3MetadataWriter {
             tag.set_title(title)
         }
 
-        match self.configurations.policy {
+        match self.policy {
             AlbumNamingPolicy::UseVideoAlbum =>
                 if let Some(album) = video.metadata.album.as_deref() {
                     tag.set_album(album)

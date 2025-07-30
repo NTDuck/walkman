@@ -21,6 +21,7 @@ use ::use_cases::models::events::VideoDownloadCompletedEvent;
 use ::use_cases::models::events::VideoDownloadEvent;
 use ::use_cases::models::events::VideoDownloadProgressUpdatedEvent;
 use ::use_cases::models::events::VideoDownloadStartedEvent;
+use ::futures::prelude::*;
 
 use crate::utils::aliases::BoxedStream;
 use crate::utils::aliases::Fallible;
@@ -29,12 +30,7 @@ use crate::utils::aliases::MaybeOwnedString;
 use crate::utils::aliases::MaybeOwnedVec;
 use crate::utils::extensions::OptionExt;
 
-#[derive(new)]
 pub struct YtdlpDownloader {
-    configurations: YtdlpConfigurations,
-}
-
-pub struct YtdlpConfigurations {
     pub directory: MaybeOwnedPath,
     pub workers: u64,
     pub per_worker_cooldown: ::std::time::Duration,
@@ -45,16 +41,13 @@ impl VideoDownloader for YtdlpDownloader {
     async fn download(
         self: ::std::sync::Arc<Self>, video: UnresolvedVideo,
     ) -> Fallible<(BoxedStream<VideoDownloadEvent>, BoxedStream<DiagnosticEvent>)> {
-        use ::futures::StreamExt as _;
-        use ::futures::TryStreamExt as _;
-
         let (video_download_events_tx, video_download_events_rx) = ::tokio::sync::mpsc::unbounded_channel();
         let (diagnostic_events_tx, diagnostic_events_rx) = ::tokio::sync::mpsc::unbounded_channel();
 
         #[rustfmt::skip]
         let (stdout, stderr) = TokioCommandExecutor::execute("yt-dlp", [
             &*video.url,
-            "--paths", self.configurations.directory.to_str().ok()?,
+            "--paths", self.directory.to_str().ok()?,
             "--format", "bestaudio",
             "--extract-audio",
             "--audio-format", "mp3",
@@ -107,9 +100,6 @@ impl PlaylistDownloader for YtdlpDownloader {
         self: ::std::sync::Arc<Self>, playlist: UnresolvedPlaylist,
     ) -> Fallible<(BoxedStream<VideoDownloadEvent>, BoxedStream<PlaylistDownloadEvent>, BoxedStream<DiagnosticEvent>)>
     {
-        use ::futures::StreamExt as _;
-        use ::futures::TryStreamExt as _;
-
         let (video_download_events_tx, video_download_events_rx) = ::tokio::sync::mpsc::unbounded_channel();
         let (playlist_download_events_tx, playlist_download_events_rx) = ::tokio::sync::mpsc::unbounded_channel();
         let (diagnostic_events_tx, diagnostic_events_rx) = ::tokio::sync::mpsc::unbounded_channel();
@@ -117,7 +107,7 @@ impl PlaylistDownloader for YtdlpDownloader {
         #[rustfmt::skip]
         let (stdout, stderr) = TokioCommandExecutor::execute("yt-dlp", [
             &*playlist.url,
-            "--paths", self.configurations.directory.to_str().ok()?,
+            "--paths", self.directory.to_str().ok()?,
             "--quiet",
             "--flat-playlist",
             "--color", "no_color",
@@ -171,7 +161,7 @@ impl PlaylistDownloader for YtdlpDownloader {
 
         let queue_emptied_notify = ::std::sync::Arc::new(::tokio::sync::Notify::new());
 
-        (0..self.configurations.workers).for_each(|_| {
+        (0..self.workers).for_each(|_| {
             ::tokio::spawn({
                 let this = ::std::sync::Arc::clone(&self);
 
@@ -240,7 +230,7 @@ impl PlaylistDownloader for YtdlpDownloader {
                             queue_emptied_notify.notify_one();
                         }
 
-                        ::tokio::time::sleep(this.configurations.per_worker_cooldown).await;
+                        ::tokio::time::sleep(this.per_worker_cooldown).await;
                     }
 
                     Ok::<_, ::anyhow::Error>(())
@@ -304,8 +294,6 @@ impl CommandExecutor for TokioCommandExecutor {
         Args: IntoIterator,
         Args::Item: AsRef<::std::ffi::OsStr>,
     {
-        use ::futures::StreamExt as _;
-        use ::futures::TryStreamExt as _;
         use ::tokio::io::AsyncBufReadExt as _;
 
         let (stdout_tx, stdout_rx) = ::tokio::sync::mpsc::unbounded_channel();
@@ -320,7 +308,7 @@ impl CommandExecutor for TokioCommandExecutor {
         let stdout = process.stdout.take().ok()?;
         let stderr = process.stderr.take().ok()?;
 
-        ::tokio::task::spawn(async move {
+        ::tokio::spawn(async move {
             let lines = ::tokio::io::BufReader::new(stdout).lines();
 
             ::tokio_stream::wrappers::LinesStream::new(lines)
@@ -331,7 +319,7 @@ impl CommandExecutor for TokioCommandExecutor {
                 .await
         });
 
-        ::tokio::task::spawn(async move {
+        ::tokio::spawn(async move {
             let lines = ::tokio::io::BufReader::new(stderr).lines();
 
             ::tokio_stream::wrappers::LinesStream::new(lines)

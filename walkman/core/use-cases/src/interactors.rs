@@ -1,5 +1,4 @@
 use ::async_trait::async_trait;
-use ::derive_new::new;
 use ::futures::prelude::*;
 
 use crate::boundaries::Accept;
@@ -24,13 +23,12 @@ use crate::utils::aliases::BoxedStream;
 use crate::utils::aliases::Fallible;
 use crate::utils::aliases::MaybeOwnedVec;
 
-#[derive(new)]
 pub struct DownloadVideoInteractor {
-    output_boundary: ::std::sync::Arc<dyn DownloadVideoOutputBoundary>,
+    pub output_boundary: ::std::sync::Arc<dyn DownloadVideoOutputBoundary>,
 
-    resources: ::std::sync::Arc<dyn ResourceRepository>,
-    downloader: ::std::sync::Arc<dyn VideoDownloader>,
-    postprocessors: MaybeOwnedVec<::std::sync::Arc<dyn PostProcessor<ResolvedVideo>>>,
+    pub resources: ::std::sync::Arc<dyn ResourceRepository>,
+    pub downloader: ::std::sync::Arc<dyn VideoDownloader>,
+    pub postprocessors: MaybeOwnedVec<::std::sync::Arc<dyn PostProcessor<ResolvedVideo>>>,
 }
 
 #[async_trait]
@@ -89,13 +87,12 @@ impl Accept<BoxedStream<DiagnosticEvent>> for DownloadVideoInteractor {
     }
 }
 
-#[derive(new)]
 pub struct DownloadPlaylistInteractor {
-    output_boundary: ::std::sync::Arc<dyn DownloadPlaylistOutputBoundary>,
+    pub output_boundary: ::std::sync::Arc<dyn DownloadPlaylistOutputBoundary>,
 
-    resources: ::std::sync::Arc<dyn ResourceRepository>,
-    downloader: ::std::sync::Arc<dyn PlaylistDownloader>,
-    postprocessors: MaybeOwnedVec<::std::sync::Arc<dyn PostProcessor<ResolvedPlaylist>>>,
+    pub resources: ::std::sync::Arc<dyn ResourceRepository>,
+    pub downloader: ::std::sync::Arc<dyn PlaylistDownloader>,
+    pub postprocessors: MaybeOwnedVec<::std::sync::Arc<dyn PostProcessor<ResolvedPlaylist>>>,
 }
 
 #[async_trait]
@@ -168,17 +165,16 @@ impl Accept<BoxedStream<DiagnosticEvent>> for DownloadPlaylistInteractor {
     }
 }
 
-#[derive(new)]
 pub struct UpdateResourcesInteractor {
-    output_boundary: ::std::sync::Arc<dyn UpdateResourcesOutputBoundary>,
+    pub output_boundary: ::std::sync::Arc<dyn UpdateResourcesOutputBoundary>,
 
-    resources: ::std::sync::Arc<dyn ResourceRepository>,
+    pub resources: ::std::sync::Arc<dyn ResourceRepository>,
 
-    video_downloader: ::std::sync::Arc<dyn VideoDownloader>,
-    playlist_downloader: ::std::sync::Arc<dyn PlaylistDownloader>,
+    pub video_downloader: ::std::sync::Arc<dyn VideoDownloader>,
+    pub playlist_downloader: ::std::sync::Arc<dyn PlaylistDownloader>,
 
-    video_postprocessors: MaybeOwnedVec<::std::sync::Arc<dyn PostProcessor<ResolvedVideo>>>,
-    playlist_postprocessors: MaybeOwnedVec<::std::sync::Arc<dyn PostProcessor<ResolvedPlaylist>>>,
+    pub video_postprocessors: MaybeOwnedVec<::std::sync::Arc<dyn PostProcessor<ResolvedVideo>>>,
+    pub playlist_postprocessors: MaybeOwnedVec<::std::sync::Arc<dyn PostProcessor<ResolvedPlaylist>>>,
 }
 
 #[async_trait]

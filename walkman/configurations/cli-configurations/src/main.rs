@@ -2,11 +2,10 @@ pub(crate) mod utils;
 
 use ::infrastructures::boundaries::DownloadPlaylistView;
 use ::infrastructures::boundaries::DownloadVideoView;
-use ::infrastructures::gateways::downloaders::YtdlpConfigurations;
 use ::infrastructures::gateways::downloaders::YtdlpDownloader;
 use ::infrastructures::gateways::postprocessors::AlbumNamingPolicy;
 use ::infrastructures::gateways::postprocessors::Id3MetadataWriter;
-use ::infrastructures::gateways::postprocessors::Id3MetadataWriterConfigurations;
+use ::infrastructures::gateways::repositories::FilesystemResourcesRepository;
 use ::use_cases::boundaries::Accept;
 use ::use_cases::boundaries::DownloadPlaylistRequestModel;
 use ::use_cases::boundaries::DownloadVideoRequestModel;
@@ -17,6 +16,7 @@ use ::use_cases::models::descriptors::ResolvedPlaylist;
 use ::use_cases::models::descriptors::ResolvedVideo;
 
 use crate::utils::aliases::Fallible;
+use crate::utils::aliases::MaybeOwnedPath;
 use crate::utils::extensions::OptionExt;
 
 #[tokio::main]
@@ -64,12 +64,18 @@ async fn main() -> Fallible<()> {
         );
 
     let matches = command.get_matches();
+    
+    let directory: MaybeOwnedPath = matches.get_one::<::std::path::PathBuf>("directory").ok()?.to_owned().into();
 
     let download_video_view = ::std::sync::Arc::new(DownloadVideoView::new()?);
     let download_playlist_view = ::std::sync::Arc::new(DownloadPlaylistView::new()?);
 
-    let downloader = ::std::sync::Arc::new(YtdlpDownloader::new(YtdlpConfigurations {
-        directory: matches.get_one::<::std::path::PathBuf>("directory").ok()?.to_owned().into(),
+    let resources = ::std::sync::Arc::new(FilesystemResourcesRepository {
+        videos_path: directory.join(".videos").into(),
+        playlists_path: directory.join(".playlists").into(),
+    });
+    let downloader = ::std::sync::Arc::new(YtdlpDownloader {
+        directory,
         workers: matches
             .get_one::<u64>("workers")
             .ok()
@@ -79,28 +85,32 @@ async fn main() -> Fallible<()> {
             .get_one::<u64>("per-worker-cooldown")
             .map(|cooldown| ::std::time::Duration::from_millis(*cooldown))
             .ok()?,
-    }));
-    let metadata_writer = ::std::sync::Arc::new(Id3MetadataWriter::new(Id3MetadataWriterConfigurations {
+    });
+    let metadata_writer = ::std::sync::Arc::new(Id3MetadataWriter {
         policy: match matches.get_one::<::std::string::String>("set-album-as").ok()?.as_ref() {
             "video-album" => AlbumNamingPolicy::UseVideoAlbum,
             "playlist-title" => AlbumNamingPolicy::UsePlaylistTitle,
             _ => panic!(),
         },
-    }));
+    });
 
-    let video_postprocessors: Vec<::std::sync::Arc<dyn PostProcessor<ResolvedVideo>>> = vec![metadata_writer.clone()];
-
+    let video_postprocessors: Vec<::std::sync::Arc<dyn PostProcessor<ResolvedVideo>>> =
+        vec![metadata_writer.clone()];
     let playlist_postprocessors: Vec<::std::sync::Arc<dyn PostProcessor<ResolvedPlaylist>>> =
         vec![metadata_writer.clone()];
 
-    let download_video_interactor: std::sync::Arc<DownloadVideoInteractor> = ::std::sync::Arc::new(
-        DownloadVideoInteractor::new(download_video_view.clone(), downloader.clone(), video_postprocessors.into()),
-    );
-    let download_playlist_interactor = ::std::sync::Arc::new(DownloadPlaylistInteractor::new(
-        download_playlist_view.clone(),
-        downloader.clone(),
-        playlist_postprocessors.into(),
-    ));
+    let download_video_interactor: std::sync::Arc<DownloadVideoInteractor> = ::std::sync::Arc::new(DownloadVideoInteractor {
+        resources: resources.clone(),
+        output_boundary: download_video_view.clone(),
+        downloader: downloader.clone(),
+        postprocessors: video_postprocessors.into(),
+    });
+    let download_playlist_interactor = ::std::sync::Arc::new(DownloadPlaylistInteractor {
+        resources: resources.clone(),
+        output_boundary: download_playlist_view.clone(),
+        downloader: downloader.clone(),
+        postprocessors: playlist_postprocessors.into(),
+    });
 
     match matches.subcommand() {
         Some(("download-video", matches)) => {
