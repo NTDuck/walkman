@@ -436,6 +436,10 @@ impl Update<DiagnosticEvent> for DownloadPlaylistView {
     }
 }
 
+struct AggregateView;
+
+
+
 static NULL: ::once_cell::sync::Lazy<::colored::ColoredString> = lazy_color!("N/A".yellow().bold());
 
 struct FormattedPercentage(u64);

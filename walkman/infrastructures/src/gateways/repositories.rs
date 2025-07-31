@@ -1,8 +1,8 @@
 use ::async_trait::async_trait;
-use ::use_cases::{gateways::{Insert, ResourceRepository}, models::descriptors::{UnresolvedPlaylist, UnresolvedVideo}};
+use ::use_cases::gateways::UrlRepository;
 use ::futures::prelude::*;
 
-use crate::utils::aliases::{BoxedStream, Fallible, MaybeOwnedPath};
+use crate::utils::aliases::{BoxedStream, Fallible, MaybeOwnedPath, MaybeOwnedString};
 
 pub struct FilesystemResourcesRepository {
     pub videos_path: MaybeOwnedPath,
@@ -10,12 +10,40 @@ pub struct FilesystemResourcesRepository {
 }
 
 #[async_trait]
-impl ResourceRepository for FilesystemResourcesRepository {
-    async fn get_all(self: ::std::sync::Arc<Self>) -> Fallible<(BoxedStream<UnresolvedVideo>, BoxedStream<UnresolvedPlaylist>)> {
+impl UrlRepository for FilesystemResourcesRepository {
+    async fn insert_video_url(self: ::std::sync::Arc<Self>, url: MaybeOwnedString) -> Fallible<()> {
+        use ::tokio::io::AsyncWriteExt as _;
+
+        let mut file = ::tokio::fs::OpenOptions::new()
+            .append(true)
+            .create(true)
+            .open(&self.videos_path)
+            .await?;
+
+        file.write_all(format!("{}\n", url).as_bytes()).await?;
+
+        Ok(())
+    }
+
+    async fn insert_playlist_url(self: ::std::sync::Arc<Self>, url: MaybeOwnedString) -> Fallible<()> {
+        use ::tokio::io::AsyncWriteExt as _;
+
+        let mut file = ::tokio::fs::OpenOptions::new()
+            .append(true)
+            .create(true)
+            .open(&self.playlists_path)
+            .await?;
+
+        file.write_all(format!("{}\n", url).as_bytes()).await?;
+
+        Ok(())
+    }
+
+    async fn get_urls(self: ::std::sync::Arc<Self>) -> Fallible<(BoxedStream<MaybeOwnedString>, BoxedStream<MaybeOwnedString>)> {
         use ::tokio::io::AsyncBufReadExt as _;
 
-        let (videos_tx, videos_rx) = ::tokio::sync::mpsc::unbounded_channel();
-        let (playlists_tx, playlists_rx) = ::tokio::sync::mpsc::unbounded_channel();
+        let (video_urls_tx, video_urls_rx) = ::tokio::sync::mpsc::unbounded_channel();
+        let (playlist_urls_tx, playlist_urls_rx) = ::tokio::sync::mpsc::unbounded_channel();
 
         match ::tokio::fs::File::open(&self.videos_path).await {
             Ok(file) => {
@@ -25,9 +53,8 @@ impl ResourceRepository for FilesystemResourcesRepository {
                     ::tokio_stream::wrappers::LinesStream::new(lines)
                         .filter_map(|line| async move { line.ok() })
                         .map(|line| line.to_owned().into())
-                        .map(|url| UnresolvedVideo { url })
                         .map(Ok)
-                        .try_for_each(|video| async { videos_tx.send(video) })
+                        .try_for_each(|url| async { video_urls_tx.send(url) })
                         .await
                 });
             }
@@ -44,9 +71,8 @@ impl ResourceRepository for FilesystemResourcesRepository {
                     ::tokio_stream::wrappers::LinesStream::new(lines)
                         .filter_map(|line| async move { line.ok() })
                         .map(|line| line.to_owned().into())
-                        .map(|url| UnresolvedPlaylist { url })
                         .map(Ok)
-                        .try_for_each(|playlist| async { playlists_tx.send(playlist) })
+                        .try_for_each(|url| async { playlist_urls_tx.send(url) })
                         .await
                 });
             }
@@ -56,42 +82,8 @@ impl ResourceRepository for FilesystemResourcesRepository {
         }
 
         Ok((
-            ::std::boxed::Box::pin(::tokio_stream::wrappers::UnboundedReceiverStream::new(videos_rx)),
-            ::std::boxed::Box::pin(::tokio_stream::wrappers::UnboundedReceiverStream::new(playlists_rx)),
+            ::std::boxed::Box::pin(::tokio_stream::wrappers::UnboundedReceiverStream::new(video_urls_rx)),
+            ::std::boxed::Box::pin(::tokio_stream::wrappers::UnboundedReceiverStream::new(playlist_urls_rx)),
         ))
-    }
-}
-
-#[async_trait]
-impl Insert<UnresolvedVideo> for FilesystemResourcesRepository {
-    async fn insert(self: ::std::sync::Arc<Self>, video: UnresolvedVideo) -> Fallible<()> {
-        use ::tokio::io::AsyncWriteExt as _;
-
-        let mut file = ::tokio::fs::OpenOptions::new()
-            .append(true)
-            .create(true)
-            .open(&self.videos_path)
-            .await?;
-
-        file.write_all(format!("{}\n", video.url).as_bytes()).await?;
-
-        Ok(())
-    }
-}
-
-#[async_trait]
-impl Insert<UnresolvedPlaylist> for FilesystemResourcesRepository {
-    async fn insert(self: ::std::sync::Arc<Self>, playlist: UnresolvedPlaylist) -> Fallible<()> {
-        use ::tokio::io::AsyncWriteExt as _;
-
-        let mut file = ::tokio::fs::OpenOptions::new()
-            .append(true)
-            .create(true)
-            .open(&self.playlists_path)
-            .await?;
-
-        file.write_all(format!("{}\n", playlist.url).as_bytes()).await?;
-
-        Ok(())
     }
 }

@@ -1,6 +1,7 @@
 use ::async_trait::async_trait;
 use ::domain::PlaylistMetadata;
 use ::domain::VideoMetadata;
+use ::use_cases::models::descriptors::UnresolvedVideo;
 use ::std::ops::Not;
 use ::use_cases::gateways::PlaylistDownloader;
 use ::use_cases::gateways::VideoDownloader;
@@ -8,8 +9,6 @@ use ::use_cases::models::descriptors::PartiallyResolvedPlaylist;
 use ::use_cases::models::descriptors::PartiallyResolvedVideo;
 use ::use_cases::models::descriptors::ResolvedPlaylist;
 use ::use_cases::models::descriptors::ResolvedVideo;
-use ::use_cases::models::descriptors::UnresolvedPlaylist;
-use ::use_cases::models::descriptors::UnresolvedVideo;
 use ::use_cases::models::events::DiagnosticEvent;
 use ::use_cases::models::events::DiagnosticLevel;
 use ::use_cases::models::events::PlaylistDownloadCompletedEvent;
@@ -38,14 +37,14 @@ pub struct YtdlpDownloader {
 #[async_trait]
 impl VideoDownloader for YtdlpDownloader {
     async fn download(
-        self: ::std::sync::Arc<Self>, video: UnresolvedVideo,
+        self: ::std::sync::Arc<Self>, url: MaybeOwnedString,
     ) -> Fallible<(BoxedStream<VideoDownloadEvent>, BoxedStream<DiagnosticEvent>)> {
         let (video_download_events_tx, video_download_events_rx) = ::tokio::sync::mpsc::unbounded_channel();
         let (diagnostic_events_tx, diagnostic_events_rx) = ::tokio::sync::mpsc::unbounded_channel();
 
         #[rustfmt::skip]
         let (stdout, stderr) = TokioCommandExecutor::execute("yt-dlp", [
-            &*video.url,
+            &*url,
             "--paths", self.directory.to_str().ok()?,
             "--format", "bestaudio",
             "--extract-audio",
@@ -96,7 +95,7 @@ impl VideoDownloader for YtdlpDownloader {
 #[async_trait]
 impl PlaylistDownloader for YtdlpDownloader {
     async fn download(
-        self: ::std::sync::Arc<Self>, playlist: UnresolvedPlaylist,
+        self: ::std::sync::Arc<Self>, url: MaybeOwnedString,
     ) -> Fallible<(BoxedStream<VideoDownloadEvent>, BoxedStream<PlaylistDownloadEvent>, BoxedStream<DiagnosticEvent>)>
     {
         let (video_download_events_tx, video_download_events_rx) = ::tokio::sync::mpsc::unbounded_channel();
@@ -105,13 +104,13 @@ impl PlaylistDownloader for YtdlpDownloader {
 
         #[rustfmt::skip]
         let (stdout, stderr) = TokioCommandExecutor::execute("yt-dlp", [
-            &*playlist.url,
+            &*url,
             "--paths", self.directory.to_str().ok()?,
             "--quiet",
             "--flat-playlist",
             "--color", "no_color",
             "--print", "playlist:[playlist-started:metadata]%(id)s;%(title)s;%(webpage_url)s",
-            "--print", "video:[playlist-started:url]%(url)s"
+            "--print", "video:[playlist-started:url]%(id)s;(url)s"
         ])?;
 
         let playlist = ::tokio::spawn({
@@ -189,7 +188,7 @@ impl PlaylistDownloader for YtdlpDownloader {
                         };
 
                         let (video_download_events, diagnostic_events) =
-                            VideoDownloader::download(::std::sync::Arc::clone(&this), video).await?;
+                            VideoDownloader::download(::std::sync::Arc::clone(&this), video.url).await?;
 
                         ::tokio::try_join!(
                             async {
@@ -496,10 +495,13 @@ impl FromLines for PlaylistDownloadStartedEvent {
             if let Some(line) = line.as_ref().strip_prefix("[playlist-started:url]") {
                 let mut attrs = line.split(';');
 
+                let id = parse_attr(attrs.next()?)?;
                 let url = parse_attr(attrs.next()?)?;
 
-                let video = UnresolvedVideo { url };
+                let video = UnresolvedVideo { id, url };
+
                 videos.push(video);
+                
             } else if let Some(line) = line.as_ref().strip_prefix("[playlist-started:metadata]") {
                 let mut attrs = line.split(';');
 

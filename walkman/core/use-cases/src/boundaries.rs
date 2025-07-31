@@ -9,7 +9,9 @@ use crate::utils::aliases::MaybeOwnedString;
 pub trait DownloadVideoInputBoundary: Accept<DownloadVideoRequestModel> {}
 
 impl<InputBoundary> DownloadVideoInputBoundary for InputBoundary where
-    InputBoundary: Accept<DownloadVideoRequestModel>, {}
+    InputBoundary: Accept<DownloadVideoRequestModel>,
+{
+}
 
 pub struct DownloadVideoRequestModel {
     pub url: MaybeOwnedString,

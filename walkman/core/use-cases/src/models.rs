@@ -87,14 +87,15 @@ pub mod descriptors {
 
     #[derive(Debug, Clone)]
     pub struct UnresolvedVideo {
+        pub id: VideoId,
         pub url: MaybeOwnedString,
     }
 
     #[derive(Debug, Clone)]
     pub struct PartiallyResolvedVideo {
+        pub id: VideoId,
         pub url: MaybeOwnedString,
 
-        pub id: VideoId,
         pub metadata: VideoMetadata,
     }
 
@@ -102,15 +103,17 @@ pub mod descriptors {
 
     #[derive(Debug, Clone)]
     pub struct UnresolvedPlaylist {
+        pub id: PlaylistId,
         pub url: MaybeOwnedString,
     }
 
     #[derive(Debug, Clone)]
     pub struct PartiallyResolvedPlaylist {
+        pub id: PlaylistId,
         pub url: MaybeOwnedString,
 
-        pub id: PlaylistId,
         pub metadata: PlaylistMetadata,
+
         pub videos: Option<MaybeOwnedVec<UnresolvedVideo>>,
     }
 
@@ -118,15 +121,17 @@ pub mod descriptors {
 
     #[derive(Debug, Clone)]
     pub struct UnresolvedChannel {
+        pub id: ChannelId,
         pub url: MaybeOwnedString,
     }
 
     #[derive(Debug, Clone)]
     pub struct PartiallyResolvedChannel {
+        pub id: ChannelId,
         pub url: MaybeOwnedString,
 
-        pub id: ChannelId,
         pub metadata: ChannelMetadata,
+        
         pub videos: Option<MaybeOwnedVec<UnresolvedVideo>>,
         pub playlists: Option<MaybeOwnedVec<UnresolvedPlaylist>>,
     }

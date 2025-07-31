@@ -6,9 +6,9 @@ use crate::utils::aliases::MaybeOwnedVec;
 
 #[derive(Debug, Clone)]
 pub struct Video {
+    pub id: VideoId,
     pub url: MaybeOwnedString,
 
-    pub id: VideoId,
     pub metadata: VideoMetadata,
 
     pub path: MaybeOwnedPath,
@@ -26,10 +26,11 @@ pub struct VideoMetadata {
 
 #[derive(Debug, Clone)]
 pub struct Playlist {
+    pub id: PlaylistId,
     pub url: MaybeOwnedString,
 
-    pub id: PlaylistId,
     pub metadata: PlaylistMetadata,
+
     pub videos: Option<MaybeOwnedVec<Video>>,
 }
 
@@ -42,10 +43,11 @@ pub struct PlaylistMetadata {
 
 #[derive(Debug, Clone)]
 pub struct Channel {
+    pub id: ChannelId,
     pub url: MaybeOwnedString,
 
-    pub id: ChannelId,
     pub metadata: ChannelMetadata,
+    
     pub videos: Option<MaybeOwnedVec<Video>>,
     pub playlists: Option<MaybeOwnedVec<Playlist>>,
 }

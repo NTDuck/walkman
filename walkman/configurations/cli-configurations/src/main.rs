@@ -100,7 +100,7 @@ async fn main() -> Fallible<()> {
         vec![metadata_writer.clone()];
 
     let download_video_interactor: std::sync::Arc<DownloadVideoInteractor> = ::std::sync::Arc::new(DownloadVideoInteractor {
-        resources: resources.clone(),
+        url_repository: resources.clone(),
         output_boundary: download_video_view.clone(),
         downloader: downloader.clone(),
         postprocessors: video_postprocessors.into(),
