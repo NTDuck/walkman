@@ -1,9 +1,8 @@
 pub mod events {
-    use ::domain::PlaylistId;
-    use ::domain::VideoId;
-
+    use crate::models::descriptors::PartiallyResolvedChannel;
     use crate::models::descriptors::PartiallyResolvedPlaylist;
     use crate::models::descriptors::PartiallyResolvedVideo;
+    use crate::models::descriptors::ResolvedChannel;
     use crate::models::descriptors::ResolvedPlaylist;
     use crate::models::descriptors::ResolvedVideo;
     use crate::utils::aliases::MaybeOwnedString;
@@ -22,7 +21,7 @@ pub mod events {
 
     #[derive(Debug, Clone)]
     pub struct VideoDownloadProgressUpdatedEvent {
-        pub video_id: VideoId,
+        pub video_id: MaybeOwnedString,
 
         pub eta: ::std::time::Duration,
         pub elapsed: ::std::time::Duration,
@@ -51,8 +50,7 @@ pub mod events {
 
     #[derive(Debug, Clone)]
     pub struct PlaylistDownloadProgressUpdatedEvent {
-        pub playlist_id: PlaylistId,
-
+        pub playlist_id: MaybeOwnedString,
         pub video: ResolvedVideo,
 
         pub completed_videos: u64,
@@ -62,6 +60,35 @@ pub mod events {
     #[derive(Debug, Clone)]
     pub struct PlaylistDownloadCompletedEvent {
         pub playlist: ResolvedPlaylist,
+    }
+
+    #[derive(Debug, Clone)]
+    pub enum ChannelDownloadEvent {
+        Started(ChannelDownloadStartedEvent),
+        ProgressUpdated(ChannelDownloadProgressUpdatedEvent),
+        Completed(ChannelDownloadCompletedEvent),
+    }
+
+    #[derive(Debug, Clone)]
+    pub struct ChannelDownloadStartedEvent {
+        pub channel: PartiallyResolvedChannel,
+    }
+
+    #[derive(Debug, Clone)]
+    pub struct ChannelDownloadProgressUpdatedEvent {
+        pub channel_id: MaybeOwnedString,
+        pub playlist: ResolvedPlaylist,
+
+        pub completed_videos: u64,
+        pub total_videos: u64,
+
+        pub completed_playlists: u64,
+        pub total_playlists: u64,
+    }
+
+    #[derive(Debug, Clone)]
+    pub struct ChannelDownloadCompletedEvent {
+        pub channel: ResolvedChannel,
     }
 
     #[derive(Debug, Clone)]
