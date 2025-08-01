@@ -1,7 +1,8 @@
 pub(crate) mod utils;
 
-use ::infrastructures::boundaries::DownloadPlaylistView;
-use ::infrastructures::boundaries::DownloadVideoView;
+use infrastructures::boundaries::AggregateView;
+// use ::infrastructures::boundaries::DownloadPlaylistView;
+// use ::infrastructures::boundaries::DownloadVideoView;
 use ::infrastructures::gateways::downloaders::YtdlpDownloader;
 use ::infrastructures::gateways::postprocessors::AlbumNamingPolicy;
 use ::infrastructures::gateways::postprocessors::Id3MetadataWriter;
@@ -67,8 +68,9 @@ async fn main() -> Fallible<()> {
     
     let directory: MaybeOwnedPath = matches.get_one::<::std::path::PathBuf>("directory").ok()?.to_owned().into();
 
-    let download_video_view = ::std::sync::Arc::new(DownloadVideoView::new()?);
-    let download_playlist_view = ::std::sync::Arc::new(DownloadPlaylistView::new()?);
+    // let download_video_view = ::std::sync::Arc::new(DownloadVideoView::new()?);
+    // let download_playlist_view = ::std::sync::Arc::new(DownloadPlaylistView::new()?);
+    let view = ::std::sync::Arc::new(AggregateView::new());
 
     let resources = ::std::sync::Arc::new(FilesystemResourcesRepository {
         videos_path: directory.join(".videos").into(),
@@ -101,13 +103,15 @@ async fn main() -> Fallible<()> {
 
     let download_video_interactor: std::sync::Arc<DownloadVideoInteractor> = ::std::sync::Arc::new(DownloadVideoInteractor {
         url_repository: resources.clone(),
-        output_boundary: download_video_view.clone(),
+        // output_boundary: download_video_view.clone(),
+        output_boundary: view.clone(),
         downloader: downloader.clone(),
         postprocessors: video_postprocessors.into(),
     });
     let download_playlist_interactor = ::std::sync::Arc::new(DownloadPlaylistInteractor {
         resources: resources.clone(),
-        output_boundary: download_playlist_view.clone(),
+        // output_boundary: download_playlist_view.clone(),
+        output_boundary: view.clone(),
         downloader: downloader.clone(),
         postprocessors: playlist_postprocessors.into(),
     });

@@ -1,4 +1,5 @@
 pub mod events {
+    use ::domain::PlaylistId;
     use ::domain::VideoId;
 
     use crate::models::descriptors::PartiallyResolvedPlaylist;
@@ -21,7 +22,7 @@ pub mod events {
 
     #[derive(Debug, Clone)]
     pub struct VideoDownloadProgressUpdatedEvent {
-        pub id: VideoId,
+        pub video_id: VideoId,
 
         pub eta: ::std::time::Duration,
         pub elapsed: ::std::time::Duration,
@@ -50,6 +51,8 @@ pub mod events {
 
     #[derive(Debug, Clone)]
     pub struct PlaylistDownloadProgressUpdatedEvent {
+        pub playlist_id: PlaylistId,
+
         pub video: ResolvedVideo,
 
         pub completed_videos: u64,

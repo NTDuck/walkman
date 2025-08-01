@@ -10,6 +10,8 @@ pub mod aliases {
 }
 
 pub mod extensions {
+    use ::async_trait::async_trait;
+
     use crate::utils::aliases::Fallible;
 
     pub trait OptionExt<T> {
@@ -30,6 +32,35 @@ pub mod extensions {
                         location.column()
                     ))
                 },
+            }
+        }
+    }
+
+    #[async_trait]
+    pub trait EntryExt<'a, K, V> {
+        async fn or_insert_with_future<Fut, F>(self, default: F) -> &'a mut V
+        where
+            F: FnOnce() -> Fut + ::core::marker::Send,
+            Fut: ::std::future::Future<Output = V> + ::core::marker::Send,
+            Self: Sized + ::core::marker::Send;
+    }
+
+    #[async_trait]
+    impl<'a, K, V, Entry> EntryExt<'a, K, V> for Entry
+    where
+        Entry: Into<::std::collections::hash_map::Entry<'a, K, V>>,
+        K: 'a + ::core::marker::Send,
+        V: 'a + ::core::marker::Send,
+    {
+        async fn or_insert_with_future<Fut, F>(self, default: F) -> &'a mut V
+        where
+            F: FnOnce() -> Fut + ::core::marker::Send,
+            Fut: ::std::future::Future<Output = V> + ::core::marker::Send,
+            Self: Sized + ::core::marker::Send,
+        {
+            match self.into() {
+                ::std::collections::hash_map::Entry::Occupied(entry) => entry.into_mut(),
+                ::std::collections::hash_map::Entry::Vacant(entry) => entry.insert(default().await),
             }
         }
     }

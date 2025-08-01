@@ -148,6 +148,8 @@ impl PlaylistDownloader for YtdlpDownloader {
         let resolved_videos: ::std::sync::Arc<::tokio::sync::Mutex<Vec<_>>> =
             ::std::sync::Arc::new(::tokio::sync::Mutex::new(Vec::with_capacity(total as usize)));
 
+        let playlist_id = playlist.id.clone();
+
         let unresolved_videos: ::std::sync::Arc<::tokio::sync::Mutex<::std::collections::VecDeque<_>>> =
             ::std::sync::Arc::new(::tokio::sync::Mutex::new(
                 playlist
@@ -167,6 +169,7 @@ impl PlaylistDownloader for YtdlpDownloader {
                 let video_download_events_tx = video_download_events_tx.clone();
                 let diagnostic_events_tx = diagnostic_events_tx.clone();
 
+                let playlist_id = playlist_id.clone();
                 let completed = ::std::sync::Arc::clone(&completed);
                 let resolved_videos = ::std::sync::Arc::clone(&resolved_videos);
                 let unresolved_videos = ::std::sync::Arc::clone(&unresolved_videos);
@@ -200,6 +203,7 @@ impl PlaylistDownloader for YtdlpDownloader {
                                             resolved_videos.lock().await.push(event.video.clone());
 
                                             let event = PlaylistDownloadProgressUpdatedEvent {
+                                                playlist_id: playlist_id.clone(),
                                                 video: event.video.clone(),
                                                 completed_videos: completed
                                                     .load(::std::sync::atomic::Ordering::Relaxed),
@@ -336,7 +340,7 @@ impl CommandExecutor for TokioCommandExecutor {
     }
 }
 
-trait FromLine {
+trait FromLine: ::core::marker::Send + ::core::marker::Sync {
     fn from_line<Line>(line: Line) -> Option<Self>
     where
         Line: AsRef<str>,
@@ -405,7 +409,7 @@ impl FromLine for VideoDownloadProgressUpdatedEvent {
         let bytes_per_second = bytes_per_second.parse::<f64>().ok()?.floor() as u64;
 
         Some(Self {
-            id,
+            video_id: id,
             eta,
             elapsed,
             downloaded_bytes,
@@ -469,7 +473,7 @@ impl FromLine for DiagnosticEvent {
 }
 
 #[async_trait]
-trait FromLines: Send + Sync {
+trait FromLines: ::core::marker::Send + ::core::marker::Sync {
     async fn from_lines<Lines, Line>(lines: Lines) -> Option<Self>
     where
         Lines: ::futures::Stream<Item = Line> + ::core::marker::Send,

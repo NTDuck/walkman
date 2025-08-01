@@ -65,17 +65,17 @@ impl<OutputBoundary> UpdateResourcesOutputBoundary for OutputBoundary where
 }
 
 #[async_trait]
-pub trait Activate: Send + Sync {
+pub trait Activate: ::core::marker::Send + ::core::marker::Sync {
     async fn activate(self: ::std::sync::Arc<Self>) -> Fallible<()>;
     async fn deactivate(self: ::std::sync::Arc<Self>) -> Fallible<()>;
 }
 
 #[async_trait]
-pub trait Accept<Request>: Send + Sync {
+pub trait Accept<Request>: ::core::marker::Send + ::core::marker::Sync {
     async fn accept(self: ::std::sync::Arc<Self>, request: Request) -> Fallible<()>;
 }
 
 #[async_trait]
-pub trait Update<Event>: Send + Sync {
+pub trait Update<Event>: ::core::marker::Send + ::core::marker::Sync {
     async fn update(self: ::std::sync::Arc<Self>, event: &Event) -> Fallible<()>;
 }
