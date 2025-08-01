@@ -25,6 +25,18 @@ impl ::std::ops::Deref for VideoId {
     }
 }
 
+impl From<VideoId> for MaybeOwnedString {
+    fn from(outer: VideoId) -> Self {
+        outer.0
+    }
+}
+
+impl From<MaybeOwnedString> for VideoId {
+    fn from(inner: MaybeOwnedString) -> Self {
+        Self(inner)
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct VideoUrl(MaybeOwnedString);
 
@@ -33,6 +45,18 @@ impl ::std::ops::Deref for VideoUrl {
 
     fn deref(&self) -> &Self::Target {
         &self.0
+    }
+}
+
+impl From<VideoUrl> for MaybeOwnedString {
+    fn from(outer: VideoUrl) -> Self {
+        outer.0
+    }
+}
+
+impl From<MaybeOwnedString> for VideoUrl {
+    fn from(inner: MaybeOwnedString) -> Self {
+        Self(inner)
     }
 }
 
@@ -52,6 +76,18 @@ impl ::std::ops::Deref for VideoFilePath {
 
     fn deref(&self) -> &Self::Target {
         &self.0
+    }
+}
+
+impl From<VideoFilePath> for MaybeOwnedPath {
+    fn from(outer: VideoFilePath) -> Self {
+        outer.0
+    }
+}
+
+impl From<MaybeOwnedPath> for VideoFilePath {
+    fn from(inner: MaybeOwnedPath) -> Self {
+        Self(inner)
     }
 }
 
@@ -76,6 +112,18 @@ impl ::std::ops::Deref for PlaylistId {
     }
 }
 
+impl From<PlaylistId> for MaybeOwnedString {
+    fn from(outer: PlaylistId) -> Self {
+        outer.0
+    }
+}
+
+impl From<MaybeOwnedString> for PlaylistId {
+    fn from(inner: MaybeOwnedString) -> Self {
+        Self(inner)
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct PlaylistUrl(MaybeOwnedString);
 
@@ -84,6 +132,18 @@ impl ::std::ops::Deref for PlaylistUrl {
 
     fn deref(&self) -> &Self::Target {
         &self.0
+    }
+}
+
+impl From<PlaylistUrl> for MaybeOwnedString {
+    fn from(outer: PlaylistUrl) -> Self {
+        outer.0
+    }
+}
+
+impl From<MaybeOwnedString> for PlaylistUrl {
+    fn from(inner: MaybeOwnedString) -> Self {
+        Self(inner)
     }
 }
 
@@ -113,6 +173,19 @@ impl ::std::ops::Deref for ChannelId {
         &self.0
     }
 }
+
+impl From<ChannelId> for MaybeOwnedString {
+    fn from(outer: ChannelId) -> Self {
+        outer.0
+    }
+}
+
+impl From<MaybeOwnedString> for ChannelId {
+    fn from(inner: MaybeOwnedString) -> Self {
+        Self(inner)
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct ChannelUrl(MaybeOwnedString);
 
@@ -121,6 +194,18 @@ impl ::std::ops::Deref for ChannelUrl {
 
     fn deref(&self) -> &Self::Target {
         &self.0
+    }
+}
+
+impl From<ChannelUrl> for MaybeOwnedString {
+    fn from(outer: ChannelUrl) -> Self {
+        outer.0
+    }
+}
+
+impl From<MaybeOwnedString> for ChannelUrl {
+    fn from(inner: MaybeOwnedString) -> Self {
+        Self(inner)
     }
 }
 

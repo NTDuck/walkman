@@ -78,41 +78,73 @@ pub mod events {
 }
 
 pub mod descriptors {
-    use ::domain::ChannelId;
-    use ::domain::ChannelMetadata;
-    use ::domain::PlaylistId;
-    use ::domain::PlaylistMetadata;
-    use ::domain::VideoId;
-    use ::domain::VideoMetadata;
-
+    use crate::utils::aliases::MaybeOwnedPath;
     use crate::utils::aliases::MaybeOwnedString;
     use crate::utils::aliases::MaybeOwnedVec;
 
     #[derive(Debug, Clone)]
     pub struct UnresolvedVideo {
-        pub id: VideoId,
+        pub id: MaybeOwnedString,
         pub url: MaybeOwnedString,
     }
 
     #[derive(Debug, Clone)]
     pub struct PartiallyResolvedVideo {
-        pub id: VideoId,
+        pub id: MaybeOwnedString,
         pub url: MaybeOwnedString,
 
         pub metadata: VideoMetadata,
     }
 
-    pub type ResolvedVideo = ::domain::Video;
+    #[derive(Debug, Clone)]
+    pub struct ResolvedVideo {
+        pub id: MaybeOwnedString,
+        pub url: MaybeOwnedString,
+
+        pub metadata: VideoMetadata,
+
+        pub path: MaybeOwnedPath,
+    }
+
+    impl From<::domain::Video> for ResolvedVideo {
+        fn from(this: ::domain::Video) -> Self {
+            Self {
+                id: this.id.into(),
+                url: this.url.into(),
+                metadata: this.metadata.into(),
+                path: this.path.into(),
+            }
+        }
+    }
+
+    #[derive(Debug, Clone)]
+    pub struct VideoMetadata {
+        pub title: Option<MaybeOwnedString>,
+        pub album: Option<MaybeOwnedString>,
+        pub artists: Option<MaybeOwnedVec<MaybeOwnedString>>,
+        pub genres: Option<MaybeOwnedVec<MaybeOwnedString>>,
+    }
+
+    impl From<::domain::VideoMetadata> for VideoMetadata {
+        fn from(this: ::domain::VideoMetadata) -> Self {
+            Self {
+                title: this.title,
+                album: this.album,
+                artists: this.artists,
+                genres: this.genres,
+            }
+        }
+    }
 
     #[derive(Debug, Clone)]
     pub struct UnresolvedPlaylist {
-        pub id: PlaylistId,
+        pub id: MaybeOwnedString,
         pub url: MaybeOwnedString,
     }
 
     #[derive(Debug, Clone)]
     pub struct PartiallyResolvedPlaylist {
-        pub id: PlaylistId,
+        pub id: MaybeOwnedString,
         pub url: MaybeOwnedString,
 
         pub metadata: PlaylistMetadata,
@@ -120,17 +152,54 @@ pub mod descriptors {
         pub videos: Option<MaybeOwnedVec<UnresolvedVideo>>,
     }
 
-    pub type ResolvedPlaylist = ::domain::Playlist;
+    #[derive(Debug, Clone)]
+    pub struct ResolvedPlaylist {
+        pub id: MaybeOwnedString,
+        pub url: MaybeOwnedString,
+
+        pub metadata: PlaylistMetadata,
+
+        pub videos: Option<MaybeOwnedVec<ResolvedVideo>>,
+    }
+
+    impl From<::domain::Playlist> for ResolvedPlaylist {
+        fn from(this: ::domain::Playlist) -> Self {
+            Self {
+                id: this.id.into(),
+                url: this.url.into(),
+                metadata: this.metadata.into(),
+                videos: this.videos.map(|videos| videos
+                    .into_iter()
+                    .cloned()
+                    .map(Into::into)
+                    .collect::<Vec<_>>()
+                    .into()),
+            }
+        }
+    }
+
+    #[derive(Debug, Clone)]
+    pub struct PlaylistMetadata {
+        pub title: Option<MaybeOwnedString>,
+    }
+
+    impl From<::domain::PlaylistMetadata> for PlaylistMetadata {
+        fn from(this: ::domain::PlaylistMetadata) -> Self {
+            Self {
+                title: this.title,
+            }
+        }
+    }
 
     #[derive(Debug, Clone)]
     pub struct UnresolvedChannel {
-        pub id: ChannelId,
+        pub id: MaybeOwnedString,
         pub url: MaybeOwnedString,
     }
 
     #[derive(Debug, Clone)]
     pub struct PartiallyResolvedChannel {
-        pub id: ChannelId,
+        pub id: MaybeOwnedString,
         pub url: MaybeOwnedString,
 
         pub metadata: ChannelMetadata,
@@ -139,5 +208,49 @@ pub mod descriptors {
         pub playlists: Option<MaybeOwnedVec<UnresolvedPlaylist>>,
     }
 
-    pub type ResolvedChannel = ::domain::Channel;
+    #[derive(Debug, Clone)]
+    pub struct ResolvedChannel {
+        pub id: MaybeOwnedString,
+        pub url: MaybeOwnedString,
+
+        pub metadata: ChannelMetadata,
+
+        pub videos: Option<MaybeOwnedVec<ResolvedVideo>>,
+        pub playlists: Option<MaybeOwnedVec<ResolvedPlaylist>>,
+    }
+
+    impl From<::domain::Channel> for ResolvedChannel {
+        fn from(this: ::domain::Channel) -> Self {
+            Self {
+                id: this.id.into(),
+                url: this.url.into(),
+                metadata: this.metadata.into(),
+                videos: this.videos.map(|videos| videos
+                    .into_iter()
+                    .cloned()
+                    .map(Into::into)
+                    .collect::<Vec<_>>()
+                    .into()),
+                playlists: this.playlists.map(|playlists| playlists
+                    .into_iter()
+                    .cloned()
+                    .map(Into::into)
+                    .collect::<Vec<_>>()
+                    .into()),
+            }
+        }
+    }
+
+    #[derive(Debug, Clone)]
+    pub struct ChannelMetadata {
+        pub title: Option<MaybeOwnedString>,
+    }
+
+    impl From<::domain::ChannelMetadata> for ChannelMetadata {
+        fn from(this: ::domain::ChannelMetadata) -> Self {
+            Self {
+                title: this.title,
+            }
+        }
+    }
 }
