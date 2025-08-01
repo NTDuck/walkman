@@ -11,6 +11,7 @@ domain = { path = "../domain" }
 
 anyhow = { workspace = true }
 async-trait = { workspace = true }
+bon = { workspace = true }
 futures = { workspace = true }
 tokio = { workspace = true, features = ["macros", "rt"] }
 tokio-stream = { workspace = true }

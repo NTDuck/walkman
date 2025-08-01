@@ -104,7 +104,7 @@ async fn main() -> Fallible<()> {
     let download_video_interactor: std::sync::Arc<DownloadVideoInteractor> = ::std::sync::Arc::new(DownloadVideoInteractor {
         urls: resources.clone(),
         // output_boundary: download_video_view.clone(),
-        output_boundary: view.clone(),
+        view: view.clone(),
         downloader: downloader.clone(),
         postprocessors: video_postprocessors.into(),
     });
