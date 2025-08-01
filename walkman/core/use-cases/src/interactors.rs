@@ -448,6 +448,12 @@ impl Accept<(BoxedStream<ChannelDownloadEvent>, UsePreprocessors)> for UpdateMed
 
         while let Some(event) = events.next().await {
             ::std::sync::Arc::clone(&self.output_boundary).update(&event).await?;
+
+            if let ChannelDownloadEvent::Completed(event) = event {
+                for postprocessor in &*self.channel_postprocessors {
+                    ::std::sync::Arc::clone(postprocessor).process(&event.channel).await?;
+                }
+            }
         }
 
         Ok(())
