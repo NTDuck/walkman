@@ -41,6 +41,7 @@ pub trait UrlRepository: Insert<VideoUrl> + Insert<PlaylistUrl> + Insert<Channel
     async fn get(self: ::std::sync::Arc<Self>) -> Fallible<(BoxedStream<VideoUrl>, BoxedStream<PlaylistUrl>, BoxedStream<ChannelUrl>)>;
 }
 
+#[async_trait]
 pub trait Insert<Item>: ::core::marker::Send + ::core::marker::Sync {
     async fn insert(self: ::std::sync::Arc<Self>, item: Item) -> Fallible<()>;
 }
