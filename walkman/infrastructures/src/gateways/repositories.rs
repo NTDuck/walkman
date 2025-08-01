@@ -39,7 +39,7 @@ impl UrlRepository for FilesystemResourcesRepository {
         Ok(())
     }
 
-    async fn get_urls(self: ::std::sync::Arc<Self>) -> Fallible<(BoxedStream<MaybeOwnedString>, BoxedStream<MaybeOwnedString>)> {
+    async fn get(self: ::std::sync::Arc<Self>) -> Fallible<(BoxedStream<MaybeOwnedString>, BoxedStream<MaybeOwnedString>)> {
         use ::tokio::io::AsyncBufReadExt as _;
 
         let (video_urls_tx, video_urls_rx) = ::tokio::sync::mpsc::unbounded_channel();

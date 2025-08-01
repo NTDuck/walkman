@@ -7,7 +7,7 @@ use crate::boundaries::DownloadPlaylistRequestModel;
 use crate::boundaries::DownloadVideoOutputBoundary;
 use crate::boundaries::DownloadVideoRequestModel;
 use crate::boundaries::UpdateResourcesOutputBoundary;
-use crate::boundaries::UpdateResourcesRequestModel;
+use crate::boundaries::UpdateMediaRequestModel;
 use crate::gateways::PlaylistDownloader;
 use crate::gateways::PostProcessor;
 use crate::gateways::UrlRepository;
@@ -174,11 +174,11 @@ pub struct UpdateResourcesInteractor {
 }
 
 #[async_trait]
-impl Accept<UpdateResourcesRequestModel> for UpdateResourcesInteractor {
-    async fn accept(self: ::std::sync::Arc<Self>, _: UpdateResourcesRequestModel) -> Fallible<()> {
+impl Accept<UpdateMediaRequestModel> for UpdateResourcesInteractor {
+    async fn accept(self: ::std::sync::Arc<Self>, _: UpdateMediaRequestModel) -> Fallible<()> {
         ::std::sync::Arc::clone(&self.output_boundary).activate().await?;
 
-        let (video_urls, playlist_urls) = ::std::sync::Arc::clone(&self.resources).get_urls().await?;
+        let (video_urls, playlist_urls) = ::std::sync::Arc::clone(&self.resources).get().await?;
 
         ::tokio::try_join!(
             async {
