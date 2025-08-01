@@ -66,6 +66,16 @@ impl<OutputBoundary> DownloadPlaylistOutputBoundary for OutputBoundary where
 {
 }
 
+pub trait DownloadChannelOutputBoundary:
+    Activate + Update<VideoDownloadEvent> + Update<PlaylistDownloadEvent> + Update<ChannelDownloadEvent> + Update<DiagnosticEvent> + ::core::marker::Send + ::core::marker::Sync
+{
+}
+
+impl<OutputBoundary> DownloadChannelOutputBoundary for OutputBoundary where
+    OutputBoundary: Activate + Update<VideoDownloadEvent> + Update<PlaylistDownloadEvent> + Update<ChannelDownloadEvent> + Update<DiagnosticEvent> + ::core::marker::Send + ::core::marker::Sync,
+{
+}
+
 pub trait UpdateMediaOutputBoundary:
     Activate + Update<VideoDownloadEvent> + Update<PlaylistDownloadEvent> + Update<ChannelDownloadEvent> + Update<DiagnosticEvent> + ::core::marker::Send + ::core::marker::Sync
 {

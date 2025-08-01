@@ -109,7 +109,7 @@ async fn main() -> Fallible<()> {
         postprocessors: video_postprocessors.into(),
     });
     let download_playlist_interactor = ::std::sync::Arc::new(DownloadPlaylistInteractor {
-        resources: resources.clone(),
+        urls: resources.clone(),
         // output_boundary: download_playlist_view.clone(),
         output_boundary: view.clone(),
         downloader: downloader.clone(),
