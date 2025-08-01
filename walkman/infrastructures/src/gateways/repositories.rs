@@ -1,89 +1,151 @@
 use ::async_trait::async_trait;
+use ::domain::{ChannelUrl, PlaylistUrl, VideoUrl};
+use ::use_cases::gateways::Insert;
 use ::use_cases::gateways::UrlRepository;
 use ::futures::prelude::*;
 
 use crate::utils::aliases::{BoxedStream, Fallible, MaybeOwnedPath, MaybeOwnedString};
 
 pub struct FilesystemResourcesRepository {
-    pub videos_path: MaybeOwnedPath,
-    pub playlists_path: MaybeOwnedPath,
+    pub video_urls_path: MaybeOwnedPath,
+    pub playlist_urls_path: MaybeOwnedPath,
+    pub channel_urls_path: MaybeOwnedPath,
 }
 
 #[async_trait]
 impl UrlRepository for FilesystemResourcesRepository {
-    async fn insert_video_url(self: ::std::sync::Arc<Self>, url: MaybeOwnedString) -> Fallible<()> {
+    async fn values(self: ::std::sync::Arc<Self>) -> Fallible<(BoxedStream<VideoUrl>, BoxedStream<PlaylistUrl>, BoxedStream<ChannelUrl>)> {
+        let (video_urls, playlist_urls, channel_urls) = ::tokio::try_join!(
+            ::std::sync::Arc::clone(&self).get(),
+            ::std::sync::Arc::clone(&self).get(),
+            ::std::sync::Arc::clone(&self).get(),
+        )?;
+
+        Ok((video_urls, playlist_urls, channel_urls))
+    }
+}
+
+#[async_trait]
+impl Insert<VideoUrl> for FilesystemResourcesRepository {
+    async fn insert(self: ::std::sync::Arc<Self>, url: VideoUrl) -> Fallible<()> {
         use ::tokio::io::AsyncWriteExt as _;
 
         let mut file = ::tokio::fs::OpenOptions::new()
             .append(true)
             .create(true)
-            .open(&self.videos_path)
+            .open(&self.video_urls_path)
             .await?;
 
-        file.write_all(format!("{}\n", url).as_bytes()).await?;
+        file.write_all(format!("{}\n", *url).as_bytes()).await?;
 
         Ok(())
     }
+}
 
-    async fn insert_playlist_url(self: ::std::sync::Arc<Self>, url: MaybeOwnedString) -> Fallible<()> {
+#[async_trait]
+impl Insert<PlaylistUrl> for FilesystemResourcesRepository {
+    async fn insert(self: ::std::sync::Arc<Self>, url: PlaylistUrl) -> Fallible<()> {
         use ::tokio::io::AsyncWriteExt as _;
 
         let mut file = ::tokio::fs::OpenOptions::new()
             .append(true)
             .create(true)
-            .open(&self.playlists_path)
+            .open(&self.playlist_urls_path)
             .await?;
 
-        file.write_all(format!("{}\n", url).as_bytes()).await?;
+        file.write_all(format!("{}\n", *url).as_bytes()).await?;
 
         Ok(())
     }
+}
 
-    async fn get(self: ::std::sync::Arc<Self>) -> Fallible<(BoxedStream<MaybeOwnedString>, BoxedStream<MaybeOwnedString>)> {
+#[async_trait]
+impl Insert<ChannelUrl> for FilesystemResourcesRepository {
+    async fn insert(self: ::std::sync::Arc<Self>, url: ChannelUrl) -> Fallible<()> {
+        use ::tokio::io::AsyncWriteExt as _;
+
+        let mut file = ::tokio::fs::OpenOptions::new()
+            .append(true)
+            .create(true)
+            .open(&self.channel_urls_path)
+            .await?;
+
+        file.write_all(format!("{}\n", *url).as_bytes()).await?;
+
+        Ok(())
+    }
+}
+
+#[async_trait]
+trait Get<Item>: ::core::marker::Send + ::core::marker::Sync {
+    async fn get(self: ::std::sync::Arc<Self>) -> Fallible<Item>;
+}
+
+#[async_trait]
+impl Get<BoxedStream<VideoUrl>> for FilesystemResourcesRepository {
+    async fn get(self: ::std::sync::Arc<Self>) -> Fallible<BoxedStream<VideoUrl>> {
         use ::tokio::io::AsyncBufReadExt as _;
 
-        let (video_urls_tx, video_urls_rx) = ::tokio::sync::mpsc::unbounded_channel();
-        let (playlist_urls_tx, playlist_urls_rx) = ::tokio::sync::mpsc::unbounded_channel();
-
-        match ::tokio::fs::File::open(&self.videos_path).await {
+        match ::tokio::fs::File::open(&self.video_urls_path).await {
             Ok(file) => {
-                ::tokio::spawn(async move {
-                    let lines = ::tokio::io::BufReader::new(file).lines();
+                let lines = ::tokio::io::BufReader::new(file).lines();
 
-                    ::tokio_stream::wrappers::LinesStream::new(lines)
-                        .filter_map(|line| async move { line.ok() })
-                        .map(|line| line.to_owned().into())
-                        .map(Ok)
-                        .try_for_each(|url| async { video_urls_tx.send(url) })
-                        .await
-                });
-            }
+                let urls = ::tokio_stream::wrappers::LinesStream::new(lines)
+                    .filter_map(|line| async move { line.ok() })
+                    .map(Into::<MaybeOwnedString>::into)
+                    .map(Into::<VideoUrl>::into);
 
-            Err(err) if err.kind() == ::std::io::ErrorKind::NotFound => {},
-            Err(err) => return Err(err.into()),
+                Ok(::std::boxed::Box::pin(urls))
+            },
+
+            Err(err) if err.kind() == ::std::io::ErrorKind::NotFound => Ok(::std::boxed::Box::pin(::futures::stream::empty())),
+            Err(err) => Err(err.into()),
         }
+    }
+}
 
-        match ::tokio::fs::File::open(&self.playlists_path).await {
+#[async_trait]
+impl Get<BoxedStream<PlaylistUrl>> for FilesystemResourcesRepository {
+    async fn get(self: ::std::sync::Arc<Self>) -> Fallible<BoxedStream<PlaylistUrl>> {
+        use ::tokio::io::AsyncBufReadExt as _;
+
+        match ::tokio::fs::File::open(&self.playlist_urls_path).await {
             Ok(file) => {
-                ::tokio::spawn(async move {
-                    let lines = ::tokio::io::BufReader::new(file).lines();
+                let lines = ::tokio::io::BufReader::new(file).lines();
 
-                    ::tokio_stream::wrappers::LinesStream::new(lines)
-                        .filter_map(|line| async move { line.ok() })
-                        .map(|line| line.to_owned().into())
-                        .map(Ok)
-                        .try_for_each(|url| async { playlist_urls_tx.send(url) })
-                        .await
-                });
-            }
+                let urls = ::tokio_stream::wrappers::LinesStream::new(lines)
+                    .filter_map(|line| async move { line.ok() })
+                    .map(Into::<MaybeOwnedString>::into)
+                    .map(Into::<PlaylistUrl>::into);
 
-            Err(err) if err.kind() == ::std::io::ErrorKind::NotFound => {},
-            Err(err) => return Err(err.into()),
+                Ok(::std::boxed::Box::pin(urls))
+            },
+
+            Err(err) if err.kind() == ::std::io::ErrorKind::NotFound => Ok(::std::boxed::Box::pin(::futures::stream::empty())),
+            Err(err) => Err(err.into()),
         }
+    }
+}
 
-        Ok((
-            ::std::boxed::Box::pin(::tokio_stream::wrappers::UnboundedReceiverStream::new(video_urls_rx)),
-            ::std::boxed::Box::pin(::tokio_stream::wrappers::UnboundedReceiverStream::new(playlist_urls_rx)),
-        ))
+#[async_trait]
+impl Get<BoxedStream<ChannelUrl>> for FilesystemResourcesRepository {
+    async fn get(self: ::std::sync::Arc<Self>) -> Fallible<BoxedStream<ChannelUrl>> {
+        use ::tokio::io::AsyncBufReadExt as _;
+
+        match ::tokio::fs::File::open(&self.channel_urls_path).await {
+            Ok(file) => {
+                let lines = ::tokio::io::BufReader::new(file).lines();
+
+                let urls = ::tokio_stream::wrappers::LinesStream::new(lines)
+                    .filter_map(|line| async move { line.ok() })
+                    .map(Into::<MaybeOwnedString>::into)
+                    .map(Into::<ChannelUrl>::into);
+
+                Ok(::std::boxed::Box::pin(urls))
+            },
+
+            Err(err) if err.kind() == ::std::io::ErrorKind::NotFound => Ok(::std::boxed::Box::pin(::futures::stream::empty())),
+            Err(err) => Err(err.into()),
+        }
     }
 }

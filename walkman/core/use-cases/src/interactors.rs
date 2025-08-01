@@ -277,7 +277,7 @@ pub struct UpdateMediaInteractor {
 #[async_trait]
 impl Accept<UpdateMediaRequestModel> for UpdateMediaInteractor {
     async fn accept(self: ::std::sync::Arc<Self>, _: UpdateMediaRequestModel) -> Fallible<()> {
-        let (video_urls, playlist_urls, channel_urls) = ::std::sync::Arc::clone(&self.urls).get().await?;
+        let (video_urls, playlist_urls, channel_urls) = ::std::sync::Arc::clone(&self.urls).values().await?;
 
         ::std::sync::Arc::clone(&self.output_boundary).activate().await?;
 
@@ -312,7 +312,7 @@ impl Accept<VideoUrl> for UpdateMediaInteractor {
         let (video_download_events, diagnostic_events) = ::std::sync::Arc::clone(&self.video_downloader).download(url.clone()).await?;
 
         ::tokio::try_join!(
-            ::std::sync::Arc::clone(&self).accept((video_download_events, UsePreprocessors)),
+            ::std::sync::Arc::clone(&self).accept((video_download_events, WithPreprocessors)),
             ::std::sync::Arc::clone(&self).accept(diagnostic_events),
         )?;
 
@@ -340,7 +340,7 @@ impl Accept<PlaylistUrl> for UpdateMediaInteractor {
 
         ::tokio::try_join!(
             ::std::sync::Arc::clone(&self).accept(video_download_events),
-            ::std::sync::Arc::clone(&self).accept((playlist_download_events, UsePreprocessors)),
+            ::std::sync::Arc::clone(&self).accept((playlist_download_events, WithPreprocessors)),
             ::std::sync::Arc::clone(&self).accept(diagnostic_events),
         )?;
 
@@ -369,7 +369,7 @@ impl Accept<ChannelUrl> for UpdateMediaInteractor {
         ::tokio::try_join!(
             ::std::sync::Arc::clone(&self).accept(video_download_events),
             ::std::sync::Arc::clone(&self).accept(playlist_download_events),
-            ::std::sync::Arc::clone(&self).accept((channel_download_events, UsePreprocessors)),
+            ::std::sync::Arc::clone(&self).accept((channel_download_events, WithPreprocessors)),
             ::std::sync::Arc::clone(&self).accept(diagnostic_events),
         )?;
 
@@ -391,8 +391,8 @@ impl Accept<BoxedStream<VideoDownloadEvent>> for UpdateMediaInteractor {
 }
 
 #[async_trait]
-impl Accept<(BoxedStream<VideoDownloadEvent>, UsePreprocessors)> for UpdateMediaInteractor {
-    async fn accept(self: ::std::sync::Arc<Self>, (events, _): (BoxedStream<VideoDownloadEvent>, UsePreprocessors)) -> Fallible<()> {
+impl Accept<(BoxedStream<VideoDownloadEvent>, WithPreprocessors)> for UpdateMediaInteractor {
+    async fn accept(self: ::std::sync::Arc<Self>, (events, _): (BoxedStream<VideoDownloadEvent>, WithPreprocessors)) -> Fallible<()> {
         ::futures::pin_mut!(events);
 
         while let Some(event) = events.next().await {
@@ -423,8 +423,8 @@ impl Accept<BoxedStream<PlaylistDownloadEvent>> for UpdateMediaInteractor {
 }
 
 #[async_trait]
-impl Accept<(BoxedStream<PlaylistDownloadEvent>, UsePreprocessors)> for UpdateMediaInteractor {
-    async fn accept(self: ::std::sync::Arc<Self>, (events, _): (BoxedStream<PlaylistDownloadEvent>, UsePreprocessors)) -> Fallible<()> {
+impl Accept<(BoxedStream<PlaylistDownloadEvent>, WithPreprocessors)> for UpdateMediaInteractor {
+    async fn accept(self: ::std::sync::Arc<Self>, (events, _): (BoxedStream<PlaylistDownloadEvent>, WithPreprocessors)) -> Fallible<()> {
         ::futures::pin_mut!(events);
 
         while let Some(event) = events.next().await {
@@ -442,8 +442,8 @@ impl Accept<(BoxedStream<PlaylistDownloadEvent>, UsePreprocessors)> for UpdateMe
 }
 
 #[async_trait]
-impl Accept<(BoxedStream<ChannelDownloadEvent>, UsePreprocessors)> for UpdateMediaInteractor {
-    async fn accept(self: ::std::sync::Arc<Self>, (events, _): (BoxedStream<ChannelDownloadEvent>, UsePreprocessors)) -> Fallible<()> {
+impl Accept<(BoxedStream<ChannelDownloadEvent>, WithPreprocessors)> for UpdateMediaInteractor {
+    async fn accept(self: ::std::sync::Arc<Self>, (events, _): (BoxedStream<ChannelDownloadEvent>, WithPreprocessors)) -> Fallible<()> {
         ::futures::pin_mut!(events);
 
         while let Some(event) = events.next().await {
@@ -473,4 +473,4 @@ impl Accept<BoxedStream<DiagnosticEvent>> for UpdateMediaInteractor {
     }
 }
 
-struct UsePreprocessors;
+struct WithPreprocessors;

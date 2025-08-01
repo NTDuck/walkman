@@ -73,8 +73,8 @@ async fn main() -> Fallible<()> {
     let view = ::std::sync::Arc::new(AggregateView::new());
 
     let resources = ::std::sync::Arc::new(FilesystemResourcesRepository {
-        videos_path: directory.join(".videos").into(),
-        playlists_path: directory.join(".playlists").into(),
+        video_urls_path: directory.join(".videos").into(),
+        playlist_urls_path: directory.join(".playlists").into(),
     });
     let downloader = ::std::sync::Arc::new(YtdlpDownloader {
         directory,

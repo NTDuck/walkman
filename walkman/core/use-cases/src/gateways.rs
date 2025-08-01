@@ -38,7 +38,7 @@ pub trait PostProcessor<Artifact>: ::core::marker::Send + ::core::marker::Sync {
 
 #[async_trait]
 pub trait UrlRepository: Insert<VideoUrl> + Insert<PlaylistUrl> + Insert<ChannelUrl> + ::core::marker::Send + ::core::marker::Sync {
-    async fn get(self: ::std::sync::Arc<Self>) -> Fallible<(BoxedStream<VideoUrl>, BoxedStream<PlaylistUrl>, BoxedStream<ChannelUrl>)>;
+    async fn values(self: ::std::sync::Arc<Self>) -> Fallible<(BoxedStream<VideoUrl>, BoxedStream<PlaylistUrl>, BoxedStream<ChannelUrl>)>;
 }
 
 #[async_trait]
