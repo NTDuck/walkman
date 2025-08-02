@@ -512,7 +512,7 @@ impl FromYtdlpLines for PlaylistDownloadStartedEvent {
                 
             } else if let Some(line) = line.as_ref().strip_prefix("[playlist-started:metadata]") {
                 let attrs = line.split(';');
-                let [id, title, url] = YtdlpAttributes::parse(attrs)?.into();
+                let [id, url, title] = YtdlpAttributes::parse(attrs)?.into();
 
                 let playlist = PartiallyResolvedPlaylist::builder()
                     .id(id.singlevalued()?)

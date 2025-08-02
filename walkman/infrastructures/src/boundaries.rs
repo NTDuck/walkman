@@ -293,7 +293,7 @@ impl Update<VideoDownloadStartedEvent> for VideoProgressBar {
 
         let title = event.video.metadata.title
             .as_deref()
-            .map(|title| title.white().bold())
+            .map(|title| title.bold())
             .unwrap_or_else(|| "N/A".yellow().bold());
         
         let (downloaded_bytes, speed, eta) = (FormattedUninitBytes, FormattedUninitBytesPerSecond, FormattedUninitDuration);
@@ -385,7 +385,7 @@ impl Update<PlaylistDownloadStartedEvent> for PlaylistProgressBar {
 
         let title = event.playlist.metadata.title
             .as_deref()
-            .map(|title| title.white().bold())
+            .map(|title| title.bold())
             .unwrap_or_else(|| "N/A".yellow().bold());
 
         let length = event.playlist.videos.as_deref().map(|videos| videos.len()).unwrap_or_default();
