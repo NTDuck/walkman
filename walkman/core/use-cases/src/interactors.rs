@@ -30,6 +30,7 @@ use crate::utils::aliases::Fallible;
 use crate::utils::aliases::MaybeOwnedVec;
 
 #[derive(::bon::Builder)]
+#[builder(on(_, into))]
 pub struct DownloadVideoInteractor {
     view: ::std::sync::Arc<dyn DownloadVideoOutputBoundary>,
 
@@ -94,6 +95,7 @@ impl Accept<BoxedStream<DiagnosticEvent>> for DownloadVideoInteractor {
 }
 
 #[derive(::bon::Builder)]
+#[builder(on(_, into))]
 pub struct DownloadPlaylistInteractor {
     view: ::std::sync::Arc<dyn DownloadPlaylistOutputBoundary>,
 
@@ -172,6 +174,7 @@ impl Accept<BoxedStream<DiagnosticEvent>> for DownloadPlaylistInteractor {
 }
 
 #[derive(::bon::Builder)]
+#[builder(on(_, into))]
 pub struct DownloadChannelInteractor {
     view: ::std::sync::Arc<dyn DownloadChannelOutputBoundary>,
 
@@ -264,6 +267,7 @@ impl Accept<BoxedStream<DiagnosticEvent>> for DownloadChannelInteractor {
 }
 
 #[derive(::bon::Builder)]
+#[builder(on(_, into))]
 pub struct UpdateMediaInteractor {
     view: ::std::sync::Arc<dyn UpdateMediaOutputBoundary>,
 

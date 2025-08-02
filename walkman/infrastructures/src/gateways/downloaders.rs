@@ -1,7 +1,9 @@
 use ::async_trait::async_trait;
-use ::domain::PlaylistMetadata;
-use ::domain::VideoMetadata;
+use ::domain::PlaylistUrl;
+use ::domain::VideoUrl;
+use ::use_cases::models::descriptors::PlaylistMetadata;
 use ::use_cases::models::descriptors::UnresolvedVideo;
+use ::use_cases::models::descriptors::VideoMetadata;
 use ::std::ops::Not;
 use ::use_cases::gateways::PlaylistDownloader;
 use ::use_cases::gateways::VideoDownloader;
@@ -28,16 +30,18 @@ use crate::utils::aliases::MaybeOwnedString;
 use crate::utils::aliases::MaybeOwnedVec;
 use crate::utils::extensions::OptionExt;
 
+#[derive(::bon::Builder)]
+#[builder(on(_, into))]
 pub struct YtdlpDownloader {
-    pub directory: MaybeOwnedPath,
-    pub workers: u64,
-    pub per_worker_cooldown: ::std::time::Duration,
+    directory: MaybeOwnedPath,
+    workers: u64,
+    per_worker_cooldown: ::std::time::Duration,
 }
 
 #[async_trait]
 impl VideoDownloader for YtdlpDownloader {
     async fn download(
-        self: ::std::sync::Arc<Self>, url: MaybeOwnedString,
+        self: ::std::sync::Arc<Self>, url: VideoUrl,
     ) -> Fallible<(BoxedStream<VideoDownloadEvent>, BoxedStream<DiagnosticEvent>)> {
         let (video_download_events_tx, video_download_events_rx) = ::tokio::sync::mpsc::unbounded_channel();
         let (diagnostic_events_tx, diagnostic_events_rx) = ::tokio::sync::mpsc::unbounded_channel();
@@ -57,9 +61,9 @@ impl VideoDownloader for YtdlpDownloader {
             "--color", "no_color",
             "--force-overwrites",
             "--progress",
-            "--print", "before_dl:[video-started]%(webpage_url)s;%(id)s;%(title)s;%(album)s;%(artist)s;%(genre)s",
+            "--print", "before_dl:[video-started]%(id)s;%(webpage_url)s;%(title)s;%(album)s;%(artist)s;%(genre)s",
             "--progress-template", "[video-downloading]%(info.id)s;%(progress.eta)s;%(progress.elapsed)s;%(progress.downloaded_bytes)s;%(progress.total_bytes)s;%(progress.speed)s",
-            "--print", "after_move:[video-completed]%(webpage_url)s;%(id)s;%(title)s;%(album)s;%(artist)s;%(genre)s;%(filepath)s",
+            "--print", "after_move:[video-completed]%(id)s;%(webpage_url)s;%(title)s;%(album)s;%(artist)s;%(genre)s;%(filepath)s",
         ])?;
 
         ::tokio::spawn({
@@ -95,7 +99,7 @@ impl VideoDownloader for YtdlpDownloader {
 #[async_trait]
 impl PlaylistDownloader for YtdlpDownloader {
     async fn download(
-        self: ::std::sync::Arc<Self>, url: MaybeOwnedString,
+        self: ::std::sync::Arc<Self>, url: PlaylistUrl,
     ) -> Fallible<(BoxedStream<VideoDownloadEvent>, BoxedStream<PlaylistDownloadEvent>, BoxedStream<DiagnosticEvent>)>
     {
         let (video_download_events_tx, video_download_events_rx) = ::tokio::sync::mpsc::unbounded_channel();
@@ -109,8 +113,8 @@ impl PlaylistDownloader for YtdlpDownloader {
             "--quiet",
             "--flat-playlist",
             "--color", "no_color",
-            "--print", "playlist:[playlist-started:metadata]%(id)s;%(title)s;%(webpage_url)s",
-            "--print", "video:[playlist-started:url]%(id)s;(url)s"
+            "--print", "playlist:[playlist-started:metadata]%(id)s;%(webpage_url)s;%(title)s",
+            "--print", "video:[playlist-started:video]%(id)s;(url)s"
         ])?;
 
         let playlist = ::tokio::spawn({
@@ -191,7 +195,7 @@ impl PlaylistDownloader for YtdlpDownloader {
                         };
 
                         let (video_download_events, diagnostic_events) =
-                            VideoDownloader::download(::std::sync::Arc::clone(&this), video.url).await?;
+                            VideoDownloader::download(::std::sync::Arc::clone(&this), video.url.into()).await?;
 
                         ::tokio::try_join!(
                             async {
@@ -204,7 +208,6 @@ impl PlaylistDownloader for YtdlpDownloader {
 
                                             let event = PlaylistDownloadProgressUpdatedEvent {
                                                 playlist_id: playlist_id.clone(),
-                                                video: event.video.clone(),
                                                 completed_videos: completed
                                                     .load(::std::sync::atomic::Ordering::Relaxed),
                                                 total_videos: total,
@@ -340,14 +343,14 @@ impl CommandExecutor for TokioCommandExecutor {
     }
 }
 
-trait FromLine: ::core::marker::Send + ::core::marker::Sync {
+trait FromYtdlpLine: ::core::marker::Send + ::core::marker::Sync {
     fn from_line<Line>(line: Line) -> Option<Self>
     where
         Line: AsRef<str>,
         Self: Sized;
 }
 
-impl FromLine for VideoDownloadEvent {
+impl FromYtdlpLine for VideoDownloadEvent {
     fn from_line<Line>(line: Line) -> Option<Self>
     where
         Line: AsRef<str>,
@@ -362,118 +365,108 @@ impl FromLine for VideoDownloadEvent {
     }
 }
 
-impl FromLine for VideoDownloadStartedEvent {
+impl FromYtdlpLine for VideoDownloadStartedEvent {
     fn from_line<Line>(line: Line) -> Option<Self>
     where
         Line: AsRef<str>,
         Self: Sized,
     {
-        let mut attrs = line.as_ref().strip_prefix("[video-started]")?.split(';');
+        let attrs = line.as_ref().strip_prefix("[video-started]")?.split(';');
+        let [id, url, title, album, artists, genres] = YtdlpAttributes::parse(attrs)?.into();
 
-        let url = parse_attr(attrs.next()?)?;
-        let id = parse_attr(attrs.next()?)?;
-        let title = parse_attr(attrs.next()?);
-        let album = parse_attr(attrs.next()?);
-        let artists = parse_multivalued_attr(attrs.next()?);
-        let genres = parse_multivalued_attr(attrs.next()?);
-
-        let video = PartiallyResolvedVideo {
-            url,
-            id,
-            metadata: VideoMetadata { title, album, artists, genres },
-        };
-
-        Some(Self { video })
+        Some(
+            Self::builder()
+                .video(PartiallyResolvedVideo::builder()
+                    .id(id.singlevalued()?)
+                    .url(url.singlevalued()?)
+                    .metadata(VideoMetadata::builder()
+                        .title(title.singlevalued()?)
+                        .album(album.singlevalued()?)
+                        .artists(artists.multivalued()?)
+                        .genres(genres.multivalued()?)
+                        .build())
+                    .build())
+                .build()
+        )
     }
 }
 
-impl FromLine for VideoDownloadProgressUpdatedEvent {
+impl FromYtdlpLine for VideoDownloadProgressUpdatedEvent {
     fn from_line<Line>(line: Line) -> Option<Self>
     where
         Line: AsRef<str>,
         Self: Sized,
     {
-        let mut attrs = line.as_ref().strip_prefix("[video-downloading]")?.split(';');
+        let attrs = line.as_ref().strip_prefix("[video-downloading]")?.split(';');
+        let [id, eta, elapsed, downloaded_bytes, total_bytes, bytes_per_second] = YtdlpAttributes::parse(attrs)?.into();
 
-        let id = parse_attr(attrs.next()?)?;
-        let eta = parse_attr(attrs.next()?)?;
-        let elapsed = parse_attr(attrs.next()?)?;
-        let downloaded_bytes = parse_attr(attrs.next()?)?;
-        let total_bytes = parse_attr(attrs.next()?)?;
-        let bytes_per_second = parse_attr(attrs.next()?)?;
-
-        let eta = ::std::time::Duration::from_secs(eta.parse().ok()?);
-        let elapsed = ::std::time::Duration::try_from_secs_f64(elapsed.parse().ok()?).ok()?;
-        let downloaded_bytes = downloaded_bytes.parse().ok()?;
-        let total_bytes = total_bytes.parse().ok()?;
-        let bytes_per_second = bytes_per_second.parse::<f64>().ok()?.floor() as u64;
-
-        Some(Self {
-            video_id: id,
-            eta,
-            elapsed,
-            downloaded_bytes,
-            total_bytes,
-            bytes_per_second,
-        })
+        Some(
+            Self::builder()
+                .video_id(id.singlevalued()?)
+                .eta(::std::time::Duration::from_secs(eta.singlevalued()?.parse().ok()?))
+                .elapsed(::std::time::Duration::try_from_secs_f64(elapsed.singlevalued()?.parse().ok()?).ok()?)
+                .downloaded_bytes(downloaded_bytes.singlevalued()?.parse().ok()?)
+                .total_bytes(total_bytes.singlevalued()?.parse().ok()?)
+                .bytes_per_second(bytes_per_second.singlevalued()?.parse::<f64>().ok()?.floor() as u64)
+                .build()
+        )
     }
 }
 
-impl FromLine for VideoDownloadCompletedEvent {
+impl FromYtdlpLine for VideoDownloadCompletedEvent {
     fn from_line<Line>(line: Line) -> Option<Self>
     where
         Line: AsRef<str>,
         Self: Sized,
     {
-        let mut attrs = line.as_ref().strip_prefix("[video-completed]")?.split(';');
+        let attrs = line.as_ref().strip_prefix("[video-completed]")?.split(';');
+        let [id, url, title, album, artists, genres, path] = YtdlpAttributes::parse(attrs)?.into();
 
-        let url = parse_attr(attrs.next()?)?;
-        let id = parse_attr(attrs.next()?)?;
-        let title = parse_attr(attrs.next()?);
-        let album = parse_attr(attrs.next()?);
-        let artists = parse_multivalued_attr(attrs.next()?);
-        let genres = parse_multivalued_attr(attrs.next()?);
-        let path = parse_attr(attrs.next()?)?;
-
-        let path = match path {
-            MaybeOwnedString::Borrowed(path) => MaybeOwnedPath::Borrowed(path.as_ref()),
-            MaybeOwnedString::Owned(path) => MaybeOwnedPath::Owned(path.into()),
-        };
-
-        let video = ResolvedVideo {
-            url,
-            id,
-            metadata: VideoMetadata { title, album, artists, genres },
-            path,
-        };
-
-        Some(Self { video })
+        Some(
+            Self::builder()
+                .video(ResolvedVideo::builder()
+                    .id(id.singlevalued()?)
+                    .url(url.singlevalued()?)
+                    .metadata(VideoMetadata::builder()
+                        .title(title.singlevalued()?)
+                        .album(album.singlevalued()?)
+                        .artists(artists.multivalued()?)
+                        .genres(genres.multivalued()?)
+                        .build())
+                    .path(match path.singlevalued()? {
+                        MaybeOwnedString::Borrowed(path) => MaybeOwnedPath::Borrowed(path.as_ref()),
+                        MaybeOwnedString::Owned(path) => MaybeOwnedPath::Owned(path.into()),
+                    })
+                    .build())
+                .build()
+        )
     }
 }
 
-impl FromLine for DiagnosticEvent {
+impl FromYtdlpLine for DiagnosticEvent {
     fn from_line<Line>(line: Line) -> Option<Self>
     where
         Line: AsRef<str>,
         Self: Sized,
     {
-        let mut attrs = line.as_ref().split(':');
+        let attrs = line.as_ref().split(':');
+        let [level, message] = YtdlpAttributes::parse(attrs)?.into();
 
-        let level = parse_attr(attrs.next()?)?;
-        let message = parse_attr(attrs.next()?)?;
-
-        let level = match level.as_ref() {
-            "WARNING" => DiagnosticLevel::Warning,
-            "ERROR" => DiagnosticLevel::Error,
-            _ => return None,
-        };
-
-        Some(Self { level, message })
+        Some(
+            Self::builder()
+                .level(match level.singlevalued()?.as_ref() {
+                    "WARNING" => DiagnosticLevel::Warning,
+                    "ERROR" => DiagnosticLevel::Error,
+                    _ => return None,
+                })
+                .message(message.singlevalued()?)
+                .build()
+        )
     }
 }
 
 #[async_trait]
-trait FromLines: ::core::marker::Send + ::core::marker::Sync {
+trait FromYtdlpLines: ::core::marker::Send + ::core::marker::Sync {
     async fn from_lines<Lines, Line>(lines: Lines) -> Option<Self>
     where
         Lines: ::futures::Stream<Item = Line> + ::core::marker::Send,
@@ -482,7 +475,7 @@ trait FromLines: ::core::marker::Send + ::core::marker::Sync {
 }
 
 #[async_trait]
-impl FromLines for PlaylistDownloadStartedEvent {
+impl FromYtdlpLines for PlaylistDownloadStartedEvent {
     async fn from_lines<Lines, Line>(lines: Lines) -> Option<Self>
     where
         Lines: ::futures::Stream<Item = Line> + ::core::marker::Send,
@@ -496,31 +489,29 @@ impl FromLines for PlaylistDownloadStartedEvent {
         ::futures::pin_mut!(lines);
 
         while let Some(line) = lines.next().await {
-            if let Some(line) = line.as_ref().strip_prefix("[playlist-started:url]") {
-                let mut attrs = line.split(';');
+            if let Some(line) = line.as_ref().strip_prefix("[playlist-started:video]") {
+                let attrs = line.split(';');
+                let [id, url] = YtdlpAttributes::parse(attrs)?.into();
 
-                let id = parse_attr(attrs.next()?)?;
-                let url = parse_attr(attrs.next()?)?;
-
-                let video = UnresolvedVideo { id, url };
+                let video = UnresolvedVideo::builder()
+                    .id(id.singlevalued()?)
+                    .url(url.singlevalued()?)
+                    .build();
 
                 videos.push(video);
                 
             } else if let Some(line) = line.as_ref().strip_prefix("[playlist-started:metadata]") {
-                let mut attrs = line.split(';');
+                let attrs = line.split(';');
+                let [id, title, url] = YtdlpAttributes::parse(attrs)?.into();
 
-                let id = parse_attr(attrs.next()?)?;
-                let title = parse_attr(attrs.next()?);
-                let url = parse_attr(attrs.next()?)?;
-
-                let videos = videos.is_empty().not().then(|| videos.into());
-
-                let playlist = PartiallyResolvedPlaylist {
-                    url,
-                    id,
-                    metadata: PlaylistMetadata { title },
-                    videos,
-                };
+                let playlist = PartiallyResolvedPlaylist::builder()
+                    .id(id.singlevalued()?)
+                    .url(url.singlevalued()?)
+                    .metadata(PlaylistMetadata::builder()
+                        .maybe_title(title.singlevalued())
+                        .build())
+                    .maybe_videos(videos.is_empty().not().then(|| videos.into()))
+                    .build();
 
                 return Some(Self { playlist });
             }
@@ -530,25 +521,46 @@ impl FromLines for PlaylistDownloadStartedEvent {
     }
 }
 
-/// TODO: Try making borrowing works
-fn parse_multivalued_attr(string: &str) -> Option<MaybeOwnedVec<MaybeOwnedString>> {
-    let attr = parse_attr(string)?;
+struct YtdlpAttribute<'a>(&'a str);
 
-    let attrs = attr.split(',').filter_map(parse_attr).collect::<Vec<_>>();
+impl<'a> YtdlpAttribute<'a> {
+    fn singlevalued(self) -> Option<MaybeOwnedString> {
+        match self.0.trim() {
+            "NA" => None,
+            attr => Some(attr.to_owned().into()),
+        }
+    }
 
-    Some(attrs.into())
-}
+    fn multivalued(self) -> Option<MaybeOwnedVec<MaybeOwnedString>> {
+        let attrs = self.0
+            .split(',')
+            .map(YtdlpAttribute)
+            .filter_map(Self::singlevalued)
+            .collect::<Vec<_>>();
 
-fn parse_attr(string: &str) -> Option<MaybeOwnedString> {
-    let string = normalize(string);
-
-    if string == "NA" {
-        None
-    } else {
-        Some(string.to_owned().into())
+        Some(attrs.into())
     }
 }
 
-fn normalize(string: &str) -> &str {
-    string.trim()
+struct YtdlpAttributes<'a, const N: usize>([YtdlpAttribute<'a>; N]);
+
+impl<'a, const N: usize> From<YtdlpAttributes<'a, N>> for [YtdlpAttribute<'a>; N] {
+    fn from(outer: YtdlpAttributes<'a, N>) -> Self {
+        outer.0
+    }
+}
+
+impl<'a, const N: usize> YtdlpAttributes<'a, N> {
+    fn parse<Attrs>(attrs: Attrs) -> Option<Self>
+    where
+        Attrs: Iterator<Item = &'a str>,
+    {
+        let attrs = attrs
+            .map(YtdlpAttribute)
+            .collect::<Vec<_>>()
+            .try_into()
+            .ok()?;
+
+        Some(Self(attrs))
+    }
 }

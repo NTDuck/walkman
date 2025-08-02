@@ -15,11 +15,13 @@ pub mod events {
     }
 
     #[derive(Debug, Clone)]
+    #[derive(::bon::Builder)]
     pub struct VideoDownloadStartedEvent {
         pub video: PartiallyResolvedVideo,
     }
 
     #[derive(Debug, Clone)]
+    #[derive(::bon::Builder)]
     pub struct VideoDownloadProgressUpdatedEvent {
         pub video_id: MaybeOwnedString,
 
@@ -29,9 +31,13 @@ pub mod events {
         pub downloaded_bytes: u64,
         pub total_bytes: u64,
         pub bytes_per_second: u64,
+
+        #[builder(skip = ((downloaded_bytes as f64) / (total_bytes as f64) * 100.0) as u64)]
+        pub percentage: u64,
     }
 
     #[derive(Debug, Clone)]
+    #[derive(::bon::Builder)]
     pub struct VideoDownloadCompletedEvent {
         pub video: ResolvedVideo,
     }
@@ -44,20 +50,22 @@ pub mod events {
     }
 
     #[derive(Debug, Clone)]
+    #[derive(::bon::Builder)]
     pub struct PlaylistDownloadStartedEvent {
         pub playlist: PartiallyResolvedPlaylist,
     }
 
     #[derive(Debug, Clone)]
+    #[derive(::bon::Builder)]
     pub struct PlaylistDownloadProgressUpdatedEvent {
         pub playlist_id: MaybeOwnedString,
-        pub video: ResolvedVideo,
 
         pub completed_videos: u64,
         pub total_videos: u64,
     }
 
     #[derive(Debug, Clone)]
+    #[derive(::bon::Builder)]
     pub struct PlaylistDownloadCompletedEvent {
         pub playlist: ResolvedPlaylist,
     }
@@ -70,14 +78,15 @@ pub mod events {
     }
 
     #[derive(Debug, Clone)]
+    #[derive(::bon::Builder)]
     pub struct ChannelDownloadStartedEvent {
         pub channel: PartiallyResolvedChannel,
     }
 
     #[derive(Debug, Clone)]
+    #[derive(::bon::Builder)]
     pub struct ChannelDownloadProgressUpdatedEvent {
         pub channel_id: MaybeOwnedString,
-        pub playlist: ResolvedPlaylist,
 
         pub completed_videos: u64,
         pub total_videos: u64,
@@ -87,11 +96,13 @@ pub mod events {
     }
 
     #[derive(Debug, Clone)]
+    #[derive(::bon::Builder)]
     pub struct ChannelDownloadCompletedEvent {
         pub channel: ResolvedChannel,
     }
 
     #[derive(Debug, Clone)]
+    #[derive(::bon::Builder)]
     pub struct DiagnosticEvent {
         pub level: DiagnosticLevel,
         pub message: MaybeOwnedString,
@@ -110,12 +121,14 @@ pub mod descriptors {
     use crate::utils::aliases::MaybeOwnedVec;
 
     #[derive(Debug, Clone)]
+    #[derive(::bon::Builder)]
     pub struct UnresolvedVideo {
         pub id: MaybeOwnedString,
         pub url: MaybeOwnedString,
     }
 
     #[derive(Debug, Clone)]
+    #[derive(::bon::Builder)]
     pub struct PartiallyResolvedVideo {
         pub id: MaybeOwnedString,
         pub url: MaybeOwnedString,
@@ -124,6 +137,7 @@ pub mod descriptors {
     }
 
     #[derive(Debug, Clone)]
+    #[derive(::bon::Builder)]
     pub struct ResolvedVideo {
         pub id: MaybeOwnedString,
         pub url: MaybeOwnedString,
@@ -145,6 +159,7 @@ pub mod descriptors {
     }
 
     #[derive(Debug, Clone)]
+    #[derive(::bon::Builder)]
     pub struct VideoMetadata {
         pub title: Option<MaybeOwnedString>,
         pub album: Option<MaybeOwnedString>,
@@ -164,12 +179,14 @@ pub mod descriptors {
     }
 
     #[derive(Debug, Clone)]
+    #[derive(::bon::Builder)]
     pub struct UnresolvedPlaylist {
         pub id: MaybeOwnedString,
         pub url: MaybeOwnedString,
     }
 
     #[derive(Debug, Clone)]
+    #[derive(::bon::Builder)]
     pub struct PartiallyResolvedPlaylist {
         pub id: MaybeOwnedString,
         pub url: MaybeOwnedString,
@@ -180,6 +197,7 @@ pub mod descriptors {
     }
 
     #[derive(Debug, Clone)]
+    #[derive(::bon::Builder)]
     pub struct ResolvedPlaylist {
         pub id: MaybeOwnedString,
         pub url: MaybeOwnedString,
@@ -206,6 +224,7 @@ pub mod descriptors {
     }
 
     #[derive(Debug, Clone)]
+    #[derive(::bon::Builder)]
     pub struct PlaylistMetadata {
         pub title: Option<MaybeOwnedString>,
     }
@@ -219,12 +238,14 @@ pub mod descriptors {
     }
 
     #[derive(Debug, Clone)]
+    #[derive(::bon::Builder)]
     pub struct UnresolvedChannel {
         pub id: MaybeOwnedString,
         pub url: MaybeOwnedString,
     }
 
     #[derive(Debug, Clone)]
+    #[derive(::bon::Builder)]
     pub struct PartiallyResolvedChannel {
         pub id: MaybeOwnedString,
         pub url: MaybeOwnedString,
@@ -236,6 +257,7 @@ pub mod descriptors {
     }
 
     #[derive(Debug, Clone)]
+    #[derive(::bon::Builder)]
     pub struct ResolvedChannel {
         pub id: MaybeOwnedString,
         pub url: MaybeOwnedString,
@@ -269,6 +291,7 @@ pub mod descriptors {
     }
 
     #[derive(Debug, Clone)]
+    #[derive(::bon::Builder)]
     pub struct ChannelMetadata {
         pub title: Option<MaybeOwnedString>,
     }
