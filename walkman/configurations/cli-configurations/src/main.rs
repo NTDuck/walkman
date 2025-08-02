@@ -6,9 +6,14 @@ use ::infrastructures::gateways::postprocessors::AlbumNamingPolicy;
 use ::infrastructures::gateways::postprocessors::Id3MetadataWriter;
 use ::infrastructures::gateways::repositories::FilesystemResourcesRepository;
 use ::use_cases::boundaries::Accept;
+use use_cases::boundaries::DownloadPlaylistOutputBoundary;
 use ::use_cases::boundaries::DownloadPlaylistRequestModel;
+use use_cases::boundaries::DownloadVideoOutputBoundary;
 use ::use_cases::boundaries::DownloadVideoRequestModel;
+use use_cases::gateways::PlaylistDownloader;
 use ::use_cases::gateways::PostProcessor;
+use use_cases::gateways::UrlRepository;
+use use_cases::gateways::VideoDownloader;
 use ::use_cases::interactors::DownloadPlaylistInteractor;
 use ::use_cases::interactors::DownloadVideoInteractor;
 use ::use_cases::models::descriptors::ResolvedPlaylist;
@@ -79,49 +84,50 @@ async fn main() -> Fallible<()> {
 
     let view = ::std::sync::Arc::new(AggregateView::builder().build());
 
-    let resources = ::std::sync::Arc::new(FilesystemResourcesRepository {
-        video_urls_path: directory.join(".videos").into(),
-        playlist_urls_path: directory.join(".playlists").into(),
-    });
-    let downloader = ::std::sync::Arc::new(YtdlpDownloader {
-        directory,
-        workers: matches
+    let urls = ::std::sync::Arc::new(FilesystemResourcesRepository::builder()
+        .video_urls_path(directory.join("video-urls.txt"))
+        .playlist_urls_path(directory.join("playlist-urls.txt"))
+        .channel_urls_path(directory.join("channel-urls.txt"))
+        .build());
+
+    let downloader = ::std::sync::Arc::new(YtdlpDownloader::builder()
+        .directory(directory)
+        .workers(matches
             .get_one::<u64>("workers")
             .ok()
             .copied()
-            .unwrap_or_else(|_| ::num_cpus::get() as u64),
-        per_worker_cooldown: matches
+            .unwrap_or_else(|_| ::num_cpus::get() as u64))
+        .per_worker_cooldown(matches
             .get_one::<u64>("per-worker-cooldown")
             .map(|cooldown| ::std::time::Duration::from_millis(*cooldown))
-            .ok()?,
-    });
-    let metadata_writer = ::std::sync::Arc::new(Id3MetadataWriter {
-        policy: match matches.get_one::<::std::string::String>("set-album-as").ok()?.as_ref() {
+            .ok()?)
+        .build());
+
+    let metadata_writer = ::std::sync::Arc::new(Id3MetadataWriter::builder()
+        .album_naming_policy(match matches.get_one::<::std::string::String>("set-album-as").ok()?.as_ref() {
             "video-album" => AlbumNamingPolicy::UseVideoAlbum,
             "playlist-title" => AlbumNamingPolicy::UsePlaylistTitle,
             _ => panic!(),
-        },
-    });
+        })
+        .build());
 
     let video_postprocessors: Vec<::std::sync::Arc<dyn PostProcessor<ResolvedVideo>>> =
-        vec![metadata_writer.clone()];
+        vec![::std::sync::Arc::clone(&metadata_writer) as ::std::sync::Arc<dyn PostProcessor<ResolvedVideo>>];
     let playlist_postprocessors: Vec<::std::sync::Arc<dyn PostProcessor<ResolvedPlaylist>>> =
-        vec![metadata_writer.clone()];
+        vec![::std::sync::Arc::clone(&metadata_writer) as ::std::sync::Arc<dyn PostProcessor<ResolvedPlaylist>>];
 
-    let download_video_interactor: std::sync::Arc<DownloadVideoInteractor> = ::std::sync::Arc::new(DownloadVideoInteractor {
-        urls: resources.clone(),
-        // output_boundary: download_video_view.clone(),
-        view: view.clone(),
-        downloader: downloader.clone(),
-        postprocessors: video_postprocessors.into(),
-    });
-    let download_playlist_interactor = ::std::sync::Arc::new(DownloadPlaylistInteractor {
-        urls: resources.clone(),
-        // output_boundary: download_playlist_view.clone(),
-        output_boundary: view.clone(),
-        downloader: downloader.clone(),
-        postprocessors: playlist_postprocessors.into(),
-    });
+    let download_video_interactor: std::sync::Arc<DownloadVideoInteractor> = ::std::sync::Arc::new(DownloadVideoInteractor::builder()
+        .view(::std::sync::Arc::clone(&view) as ::std::sync::Arc<dyn DownloadVideoOutputBoundary>)
+        .urls(::std::sync::Arc::clone(&urls) as ::std::sync::Arc<dyn UrlRepository>)
+        .downloader(::std::sync::Arc::clone(&downloader) as ::std::sync::Arc<dyn VideoDownloader>)
+        .postprocessors(video_postprocessors)
+        .build());
+    let download_playlist_interactor = ::std::sync::Arc::new(DownloadPlaylistInteractor::builder()
+        .view(::std::sync::Arc::clone(&view) as ::std::sync::Arc<dyn DownloadPlaylistOutputBoundary>)
+        .urls(::std::sync::Arc::clone(&urls) as ::std::sync::Arc<dyn UrlRepository>)
+        .downloader(::std::sync::Arc::clone(&downloader) as ::std::sync::Arc<dyn PlaylistDownloader>)
+        .postprocessors(playlist_postprocessors)
+        .build());
 
     match matches.subcommand() {
         Some(("download-video", matches)) => {

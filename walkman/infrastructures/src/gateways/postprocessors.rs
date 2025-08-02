@@ -6,13 +6,21 @@ use ::rayon::prelude::*;
 
 use crate::utils::aliases::Fallible;
 
+#[derive(::bon::Builder)]
+#[builder(on(_, into))]
 pub struct Id3MetadataWriter {
-    pub policy: AlbumNamingPolicy,
+    album_naming_policy: AlbumNamingPolicy,
 }
 
 pub enum AlbumNamingPolicy {
     UseVideoAlbum,
     UsePlaylistTitle,
+}
+
+pub enum ArtistsNamingPolicy {
+    UseOnlyVideoArtists,
+    UseOnlyChannelTitle,
+    UseBothVideoArtistsAndChannelTitle,
 }
 
 #[async_trait]
@@ -44,7 +52,7 @@ impl Id3MetadataWriter {
             tag.set_title(title)
         }
 
-        match self.policy {
+        match self.album_naming_policy {
             AlbumNamingPolicy::UseVideoAlbum =>
                 if let Some(album) = video.metadata.album.as_deref() {
                     tag.set_album(album)
