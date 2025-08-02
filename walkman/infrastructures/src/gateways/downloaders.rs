@@ -380,10 +380,10 @@ impl FromYtdlpLine for VideoDownloadStartedEvent {
                     .id(id.singlevalued()?)
                     .url(url.singlevalued()?)
                     .metadata(VideoMetadata::builder()
-                        .title(title.singlevalued()?)
-                        .album(album.singlevalued()?)
-                        .artists(artists.multivalued()?)
-                        .genres(genres.multivalued()?)
+                        .title(title.singlevalued())
+                        .album(album.singlevalued())
+                        .artists(artists.multivalued())
+                        .genres(genres.multivalued())
                         .build())
                     .build())
                 .build()
@@ -428,10 +428,10 @@ impl FromYtdlpLine for VideoDownloadCompletedEvent {
                     .id(id.singlevalued()?)
                     .url(url.singlevalued()?)
                     .metadata(VideoMetadata::builder()
-                        .title(title.singlevalued()?)
-                        .album(album.singlevalued()?)
-                        .artists(artists.multivalued()?)
-                        .genres(genres.multivalued()?)
+                        .title(title.singlevalued())
+                        .album(album.singlevalued())
+                        .artists(artists.multivalued())
+                        .genres(genres.multivalued())
                         .build())
                     .path(match path.singlevalued()? {
                         MaybeOwnedString::Borrowed(path) => MaybeOwnedPath::Borrowed(path.as_ref()),
@@ -482,8 +482,6 @@ impl FromYtdlpLines for PlaylistDownloadStartedEvent {
         Line: AsRef<str>,
         Self: Sized,
     {
-        use ::futures::StreamExt as _;
-
         let mut videos = Vec::new();
 
         ::futures::pin_mut!(lines);
@@ -508,9 +506,9 @@ impl FromYtdlpLines for PlaylistDownloadStartedEvent {
                     .id(id.singlevalued()?)
                     .url(url.singlevalued()?)
                     .metadata(PlaylistMetadata::builder()
-                        .maybe_title(title.singlevalued())
+                        .title(title.singlevalued())
                         .build())
-                    .maybe_videos(videos.is_empty().not().then(|| videos.into()))
+                    .videos(videos.is_empty().not().then(|| videos.into()))
                     .build();
 
                 return Some(Self { playlist });

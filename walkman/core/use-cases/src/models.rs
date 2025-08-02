@@ -161,9 +161,16 @@ pub mod descriptors {
     #[derive(Debug, Clone)]
     #[derive(::bon::Builder)]
     pub struct VideoMetadata {
+        #[builder(required)]
         pub title: Option<MaybeOwnedString>,
+
+        #[builder(required)]
         pub album: Option<MaybeOwnedString>,
+
+        #[builder(required)]
         pub artists: Option<MaybeOwnedVec<MaybeOwnedString>>,
+
+        #[builder(required)]
         pub genres: Option<MaybeOwnedVec<MaybeOwnedString>>,
     }
 
@@ -192,7 +199,8 @@ pub mod descriptors {
         pub url: MaybeOwnedString,
 
         pub metadata: PlaylistMetadata,
-
+        
+        #[builder(required)]
         pub videos: Option<MaybeOwnedVec<UnresolvedVideo>>,
     }
 
@@ -204,6 +212,7 @@ pub mod descriptors {
 
         pub metadata: PlaylistMetadata,
 
+        #[builder(required)]
         pub videos: Option<MaybeOwnedVec<ResolvedVideo>>,
     }
 
@@ -226,6 +235,7 @@ pub mod descriptors {
     #[derive(Debug, Clone)]
     #[derive(::bon::Builder)]
     pub struct PlaylistMetadata {
+        #[builder(required)]
         pub title: Option<MaybeOwnedString>,
     }
 
@@ -252,7 +262,10 @@ pub mod descriptors {
 
         pub metadata: ChannelMetadata,
         
+        #[builder(required)]
         pub videos: Option<MaybeOwnedVec<UnresolvedVideo>>,
+
+        #[builder(required)]
         pub playlists: Option<MaybeOwnedVec<UnresolvedPlaylist>>,
     }
 
@@ -264,7 +277,10 @@ pub mod descriptors {
 
         pub metadata: ChannelMetadata,
 
+        #[builder(required)]
         pub videos: Option<MaybeOwnedVec<ResolvedVideo>>,
+
+        #[builder(required)]
         pub playlists: Option<MaybeOwnedVec<ResolvedPlaylist>>,
     }
 
@@ -293,6 +309,7 @@ pub mod descriptors {
     #[derive(Debug, Clone)]
     #[derive(::bon::Builder)]
     pub struct ChannelMetadata {
+        #[builder(required)]
         pub title: Option<MaybeOwnedString>,
     }
 
