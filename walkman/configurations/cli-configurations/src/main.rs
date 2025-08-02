@@ -1,8 +1,6 @@
 pub(crate) mod utils;
 
 use infrastructures::boundaries::AggregateView;
-// use ::infrastructures::boundaries::DownloadPlaylistView;
-// use ::infrastructures::boundaries::DownloadVideoView;
 use ::infrastructures::gateways::downloaders::YtdlpDownloader;
 use ::infrastructures::gateways::postprocessors::AlbumNamingPolicy;
 use ::infrastructures::gateways::postprocessors::Id3MetadataWriter;
@@ -41,6 +39,17 @@ async fn main() -> Fallible<()> {
                     .value_parser(::clap::value_parser!(::std::string::String)),
             ),
         )
+        .subcommand(
+            ::clap::Command::new("download-channel").arg(
+                ::clap::Arg::new("url")
+                    .short('i')
+                    .required(true)
+                    .value_parser(::clap::value_parser!(::std::string::String)),
+            ),
+        )
+        .subcommand(
+            ::clap::Command::new("update")
+        )
         .arg(
             ::clap::Arg::new("directory")
                 .short('o')
@@ -68,9 +77,7 @@ async fn main() -> Fallible<()> {
     
     let directory: MaybeOwnedPath = matches.get_one::<::std::path::PathBuf>("directory").ok()?.to_owned().into();
 
-    // let download_video_view = ::std::sync::Arc::new(DownloadVideoView::new()?);
-    // let download_playlist_view = ::std::sync::Arc::new(DownloadPlaylistView::new()?);
-    let view = ::std::sync::Arc::new(AggregateView::new());
+    let view = ::std::sync::Arc::new(AggregateView::builder().build());
 
     let resources = ::std::sync::Arc::new(FilesystemResourcesRepository {
         video_urls_path: directory.join(".videos").into(),

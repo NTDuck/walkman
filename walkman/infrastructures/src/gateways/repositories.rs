@@ -6,10 +6,12 @@ use ::futures::prelude::*;
 
 use crate::utils::aliases::{BoxedStream, Fallible, MaybeOwnedPath, MaybeOwnedString};
 
+#[derive(::bon::Builder)]
+#[builder(on(_, into))]
 pub struct FilesystemResourcesRepository {
-    pub video_urls_path: MaybeOwnedPath,
-    pub playlist_urls_path: MaybeOwnedPath,
-    pub channel_urls_path: MaybeOwnedPath,
+    video_urls_path: MaybeOwnedPath,
+    playlist_urls_path: MaybeOwnedPath,
+    channel_urls_path: MaybeOwnedPath,
 }
 
 #[async_trait]
