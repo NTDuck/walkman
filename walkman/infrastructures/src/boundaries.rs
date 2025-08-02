@@ -2,6 +2,7 @@ use ::async_trait::async_trait;
 use ::use_cases::boundaries::Activate;
 use ::use_cases::boundaries::Update;
 use use_cases::models::events::ChannelDownloadCompletedEvent;
+use use_cases::models::events::ChannelDownloadEvent;
 use use_cases::models::events::ChannelDownloadProgressUpdatedEvent;
 use use_cases::models::events::ChannelDownloadStartedEvent;
 use ::use_cases::models::events::DiagnosticEvent;
@@ -200,6 +201,38 @@ impl Update<PlaylistDownloadCompletedEvent> for AggregateView {
         ::std::sync::Arc::clone(playlist_progress_bar).update(event).await?;
 
         Ok(())
+    }
+}
+
+#[async_trait]
+impl Update<ChannelDownloadEvent> for AggregateView {
+    async fn update(self: ::std::sync::Arc<Self>, event: &ChannelDownloadEvent) -> Fallible<()> {
+        match event {
+            ChannelDownloadEvent::Started(event) => self.update(event).await,
+            ChannelDownloadEvent::ProgressUpdated(event) => self.update(event).await,
+            ChannelDownloadEvent::Completed(event) => self.update(event).await,
+        }
+    }
+}
+
+#[async_trait]
+impl Update<ChannelDownloadStartedEvent> for AggregateView {
+    async fn update(self: ::std::sync::Arc<Self>, _: &ChannelDownloadStartedEvent) -> Fallible<()> {
+        todo!()
+    }
+}
+
+#[async_trait]
+impl Update<ChannelDownloadProgressUpdatedEvent> for AggregateView {
+    async fn update(self: ::std::sync::Arc<Self>, _: &ChannelDownloadProgressUpdatedEvent) -> Fallible<()> {
+        todo!()
+    }
+}
+
+#[async_trait]
+impl Update<ChannelDownloadCompletedEvent> for AggregateView {
+    async fn update(self: ::std::sync::Arc<Self>, _: &ChannelDownloadCompletedEvent) -> Fallible<()> {
+        todo!()
     }
 }
 

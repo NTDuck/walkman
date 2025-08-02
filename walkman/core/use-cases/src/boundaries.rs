@@ -14,6 +14,9 @@ impl<InputBoundary> DownloadVideoInputBoundary for InputBoundary where
 {
 }
 
+#[derive(Debug, Clone)]
+#[derive(::bon::Builder)]
+#[builder(on(_, into))]
 pub struct DownloadVideoRequestModel {
     pub url: MaybeOwnedString,
 }
@@ -25,6 +28,9 @@ impl<InputBoundary> DownloadPlaylistInputBoundary for InputBoundary where
 {
 }
 
+#[derive(Debug, Clone)]
+#[derive(::bon::Builder)]
+#[builder(on(_, into))]
 pub struct DownloadPlaylistRequestModel {
     pub url: MaybeOwnedString,
 }
@@ -36,6 +42,9 @@ impl<InputBoundary> DownloadChannelInputBoundary for InputBoundary where
 {
 }
 
+#[derive(Debug, Clone)]
+#[derive(::bon::Builder)]
+#[builder(on(_, into))]
 pub struct DownloadChannelRequestModel {
     pub url: MaybeOwnedString,
 }
@@ -47,6 +56,7 @@ impl<InputBoundary> UpdateMediaInputBoundary for InputBoundary where
 {
 }
 
+#[derive(Debug, Clone)]
 pub struct UpdateMediaRequestModel;
 
 pub trait DownloadVideoOutputBoundary: Activate + Update<VideoDownloadEvent> + Update<DiagnosticEvent> + ::core::marker::Send + ::core::marker::Sync {}

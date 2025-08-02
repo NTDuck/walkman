@@ -1,9 +1,12 @@
 use ::async_trait::async_trait;
+use domain::ChannelUrl;
 use ::domain::PlaylistUrl;
 use ::domain::VideoUrl;
+use use_cases::gateways::ChannelDownloader;
 use ::use_cases::models::descriptors::PlaylistMetadata;
 use ::use_cases::models::descriptors::UnresolvedVideo;
 use ::use_cases::models::descriptors::VideoMetadata;
+use use_cases::models::events::ChannelDownloadEvent;
 use ::std::ops::Not;
 use ::use_cases::gateways::PlaylistDownloader;
 use ::use_cases::gateways::VideoDownloader;
@@ -274,6 +277,15 @@ impl PlaylistDownloader for YtdlpDownloader {
             ::std::boxed::Box::pin(::tokio_stream::wrappers::UnboundedReceiverStream::new(playlist_download_events_rx)),
             ::std::boxed::Box::pin(::tokio_stream::wrappers::UnboundedReceiverStream::new(diagnostic_events_rx)),
         ))
+    }
+}
+
+#[async_trait]
+impl ChannelDownloader for YtdlpDownloader {
+    async fn download(
+        self: ::std::sync::Arc<Self>, _: ChannelUrl,
+    ) -> Fallible<(BoxedStream<VideoDownloadEvent>, BoxedStream<PlaylistDownloadEvent>, BoxedStream<ChannelDownloadEvent>, BoxedStream<DiagnosticEvent>)> {
+        todo!()
     }
 }
 
