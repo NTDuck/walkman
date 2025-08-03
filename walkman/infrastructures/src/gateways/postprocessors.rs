@@ -51,8 +51,36 @@ impl PostProcessor<ResolvedPlaylist> for Id3MetadataWriter {
 
 #[async_trait]
 impl PostProcessor<ResolvedChannel> for Id3MetadataWriter {
-    async fn process(self: ::std::sync::Arc<Self>, _: &ResolvedChannel) -> Fallible<()> {
-        todo!()
+    async fn process(self: ::std::sync::Arc<Self>, channel: &ResolvedChannel) -> Fallible<()> {
+        ::tokio::try_join!(
+            async {
+                channel.videos
+                    .as_deref()
+                    .into_par_iter()
+                    .flatten()
+                    .try_for_each(|video| ::std::sync::Arc::clone(&self).write()
+                        .video(video)
+                        .channel(channel)
+                        .call())
+            },
+            async {
+                channel.playlists
+                    .as_deref()
+                    .into_par_iter()
+                    .flatten()
+                    .try_for_each(|playlist| playlist.videos
+                        .as_deref()
+                        .into_par_iter()
+                        .flatten()
+                        .try_for_each(|video| ::std::sync::Arc::clone(&self).write()
+                            .video(video)
+                            .playlist(playlist)
+                            .channel(channel)
+                            .call()))
+            },
+        )?;
+
+        Ok(())
     }
 }
 
@@ -92,11 +120,14 @@ impl Id3MetadataWriter {
                 }
             },
             ArtistsNamingPolicy::UseBothVideoArtistsAndChannelTitle => {
-                match (video.metadata.artists.as_deref().map(|artists| artists.join(", ")), channel.and_then(|channel| channel.metadata.title.as_deref())) {
+                match (
+                    video.metadata.artists.as_deref().map(|artists| artists.join(", ")),
+                    channel.and_then(|channel| channel.metadata.title.as_deref()),
+                ) {
                     (Some(artists), Some(title)) => tag.set_artist(format!("{}, {}", artists, title)),
                     (Some(artists), None) => tag.set_artist(artists),
                     (None, Some(title)) => tag.set_artist(title),
-                    (None, None) => (),
+                    (None, None) => {},
                 }
             },
         }
