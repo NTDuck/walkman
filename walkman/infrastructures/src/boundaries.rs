@@ -293,7 +293,7 @@ impl Update<VideoDownloadStartedEvent> for VideoProgressBar {
 
         let title = event.video.metadata.title
             .as_deref()
-            .map(|title| title.bold())
+            .map(|title| title.white().bold())
             .unwrap_or_else(|| "N/A".yellow().bold());
         
         let (downloaded_bytes, speed, eta) = (FormattedUninitBytes, FormattedUninitBytesPerSecond, FormattedUninitDuration);
@@ -336,13 +336,27 @@ impl Update<VideoDownloadProgressUpdatedEvent> for VideoProgressBar {
 
 #[async_trait]
 impl Update<VideoDownloadCompletedEvent> for VideoProgressBar {
-    async fn update(self: ::std::sync::Arc<Self>, _: &VideoDownloadCompletedEvent) -> Fallible<()> {
+    async fn update(self: ::std::sync::Arc<Self>, event: &VideoDownloadCompletedEvent) -> Fallible<()> {
+        use ::colored::Colorize as _;
+
+        let title = event.video.metadata.title
+            .as_deref()
+            .map(|title| title.bold())
+            .unwrap_or_else(|| "N/A".bold());
+
+        let message = self.message();
+        let message = message
+            .rfind("] ")
+            .map(|idx| &message[..=idx + 1])
+            .map(|prefix| format!("{}{}", prefix, title))
+            .ok()?;
+
         self.set_length(100);
         self.set_position(100);
 
         self.set_style(::indicatif::ProgressStyle::with_template(&format!("{{prefix}} {:#<50} {{msg}}", "".gray()))?);
-        self.set_prefix(self.prefix().gray().to_string());
-        self.set_message(self.message().gray().to_string());
+        self.set_prefix(self.prefix().normal().gray().to_string());
+        self.set_message(message.normal().gray().to_string());
 
         self.finish();
 
@@ -395,7 +409,7 @@ impl Update<PlaylistDownloadStartedEvent> for PlaylistProgressBar {
         self.set_length(length as u64);
         self.set_position(0);
         
-        self.set_style(::indicatif::ProgressStyle::with_template("{bar:50} {msg}")?
+        self.set_style(::indicatif::ProgressStyle::with_template("{bar:61} {msg}")?
             .progress_chars("##-"));
         self.set_message(format!("[{}/{}] {}", 0, length, title));
         
@@ -406,6 +420,8 @@ impl Update<PlaylistDownloadStartedEvent> for PlaylistProgressBar {
 #[async_trait]
 impl Update<PlaylistDownloadProgressUpdatedEvent> for PlaylistProgressBar {
     async fn update(self: ::std::sync::Arc<Self>, event: &PlaylistDownloadProgressUpdatedEvent) -> Fallible<()> {
+        println!("{:?}", event);
+
         let message = self.message();
         let title = message
             .rfind("] ")
@@ -414,7 +430,7 @@ impl Update<PlaylistDownloadProgressUpdatedEvent> for PlaylistProgressBar {
 
         self.set_position(event.completed_videos);
 
-        self.set_message(format!("[{}/{}] {}", event.total_videos, event.completed_videos, title));
+        self.set_message(format!("[{}/{}] {}", event.completed_videos, event.total_videos, title));
 
         Ok(())
     }
@@ -422,12 +438,27 @@ impl Update<PlaylistDownloadProgressUpdatedEvent> for PlaylistProgressBar {
 
 #[async_trait]
 impl Update<PlaylistDownloadCompletedEvent> for PlaylistProgressBar {
-    async fn update(self: ::std::sync::Arc<Self>, _: &PlaylistDownloadCompletedEvent) -> Fallible<()> {
+    async fn update(self: ::std::sync::Arc<Self>, event: &PlaylistDownloadCompletedEvent) -> Fallible<()> {
+        println!("{:?}", event);
+
+        use ::colored::Colorize as _;
+
+        let title = event.playlist.metadata.title
+            .as_deref()
+            .map(|title| title.bold())
+            .unwrap_or_else(|| "N/A".bold());
+
+        let message = self.message();
+        let message = message
+            .rfind("] ")
+            .map(|idx| &message[..=idx + 1])
+            .map(|prefix| format!("{}{}", prefix, title))
+            .ok()?;
+
         self.set_position(self.length().ok()?);
 
-        self.set_style(::indicatif::ProgressStyle::with_template(&format!("{:#<50} {{msg}}", "".gray()))?);
-        self.set_prefix(self.prefix().gray().to_string());
-        self.set_message(self.message().gray().to_string());
+        self.set_style(::indicatif::ProgressStyle::with_template(&format!("{:#<61} {{msg}}", "".gray()))?);
+        self.set_message(message.normal().gray().to_string());
 
         self.finish();
 

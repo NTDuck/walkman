@@ -117,7 +117,7 @@ impl PlaylistDownloader for YtdlpDownloader {
             "--flat-playlist",
             "--color", "no_color",
             "--print", "playlist:[playlist-started:metadata]%(id)s;%(webpage_url)s;%(title)s",
-            "--print", "video:[playlist-started:video]%(id)s;(url)s"
+            "--print", "video:[playlist-started:video]%(id)s;%(url)s"
         ])?;
 
         let playlist = ::tokio::spawn({
@@ -149,11 +149,11 @@ impl PlaylistDownloader for YtdlpDownloader {
         })
         .await??;
 
-        let completed = ::std::sync::Arc::new(::std::sync::atomic::AtomicU64::new(0));
-        let total = playlist.videos.as_deref().map(|videos| videos.len() as u64).unwrap_or_default();
+        let completed_videos = ::std::sync::Arc::new(::std::sync::atomic::AtomicU64::new(0));
+        let total_videos = playlist.videos.as_deref().map(|videos| videos.len() as u64).unwrap_or_default();
 
         let resolved_videos: ::std::sync::Arc<::tokio::sync::Mutex<Vec<_>>> =
-            ::std::sync::Arc::new(::tokio::sync::Mutex::new(Vec::with_capacity(total as usize)));
+            ::std::sync::Arc::new(::tokio::sync::Mutex::new(Vec::with_capacity(total_videos as usize)));
 
         let playlist_id = playlist.id.clone();
 
@@ -177,24 +177,16 @@ impl PlaylistDownloader for YtdlpDownloader {
                 let diagnostic_events_tx = diagnostic_events_tx.clone();
 
                 let playlist_id = playlist_id.clone();
-                let completed = ::std::sync::Arc::clone(&completed);
+                let completed = ::std::sync::Arc::clone(&completed_videos);
                 let resolved_videos = ::std::sync::Arc::clone(&resolved_videos);
                 let unresolved_videos = ::std::sync::Arc::clone(&unresolved_videos);
                 let queue_emptied_notify = ::std::sync::Arc::clone(&queue_emptied_notify);
 
                 async move {
                     loop {
-                        let (video, queue_emptied_by_this_worker) = {
-                            let mut unresolved_videos = unresolved_videos.lock().await;
-
-                            let video = unresolved_videos.pop_front();
-                            let queue_emptied_by_this_worker = unresolved_videos.is_empty();
-
-                            (video, queue_emptied_by_this_worker)
-                        };
-
-                        let Some(video) = video else {
-                            break;
+                        let video = match unresolved_videos.lock().await.pop_front() {
+                            Some(video) => video,
+                            None => break,
                         };
 
                         let (video_download_events, diagnostic_events) =
@@ -209,12 +201,11 @@ impl PlaylistDownloader for YtdlpDownloader {
                                             completed.fetch_add(1, ::std::sync::atomic::Ordering::Relaxed);
                                             resolved_videos.lock().await.push(event.video.clone());
 
-                                            let event = PlaylistDownloadProgressUpdatedEvent {
-                                                playlist_id: playlist_id.clone(),
-                                                completed_videos: completed
-                                                    .load(::std::sync::atomic::Ordering::Relaxed),
-                                                total_videos: total,
-                                            };
+                                            let event = PlaylistDownloadProgressUpdatedEvent::builder()
+                                                .playlist_id(playlist_id.clone())
+                                                .completed_videos(completed.load(::std::sync::atomic::Ordering::Relaxed))
+                                                .total_videos(total_videos)
+                                                .build();
 
                                             playlist_download_events_tx
                                                 .send(PlaylistDownloadEvent::ProgressUpdated(event))?;
@@ -235,7 +226,7 @@ impl PlaylistDownloader for YtdlpDownloader {
                             },
                         )?;
 
-                        if queue_emptied_by_this_worker {
+                        if completed.load(::std::sync::atomic::Ordering::Relaxed) == total_videos {
                             queue_emptied_notify.notify_one();
                         }
 
