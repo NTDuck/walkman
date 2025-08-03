@@ -1,10 +1,10 @@
 use ::async_trait::async_trait;
 use ::use_cases::boundaries::Activate;
 use ::use_cases::boundaries::Update;
-use use_cases::models::events::ChannelDownloadCompletedEvent;
-use use_cases::models::events::ChannelDownloadEvent;
-use use_cases::models::events::ChannelDownloadProgressUpdatedEvent;
-use use_cases::models::events::ChannelDownloadStartedEvent;
+use ::use_cases::models::events::ChannelDownloadCompletedEvent;
+use ::use_cases::models::events::ChannelDownloadEvent;
+use ::use_cases::models::events::ChannelDownloadProgressUpdatedEvent;
+use ::use_cases::models::events::ChannelDownloadStartedEvent;
 use ::use_cases::models::events::DiagnosticEvent;
 use ::use_cases::models::events::DiagnosticLevel;
 use ::use_cases::models::events::PlaylistDownloadCompletedEvent;
@@ -420,8 +420,6 @@ impl Update<PlaylistDownloadStartedEvent> for PlaylistProgressBar {
 #[async_trait]
 impl Update<PlaylistDownloadProgressUpdatedEvent> for PlaylistProgressBar {
     async fn update(self: ::std::sync::Arc<Self>, event: &PlaylistDownloadProgressUpdatedEvent) -> Fallible<()> {
-        println!("{:?}", event);
-
         let message = self.message();
         let title = message
             .rfind("] ")
@@ -439,8 +437,6 @@ impl Update<PlaylistDownloadProgressUpdatedEvent> for PlaylistProgressBar {
 #[async_trait]
 impl Update<PlaylistDownloadCompletedEvent> for PlaylistProgressBar {
     async fn update(self: ::std::sync::Arc<Self>, event: &PlaylistDownloadCompletedEvent) -> Fallible<()> {
-        println!("{:?}", event);
-
         use ::colored::Colorize as _;
 
         let title = event.playlist.metadata.title

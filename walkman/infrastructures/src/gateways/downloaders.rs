@@ -452,7 +452,7 @@ impl FromYtdlpLine for DiagnosticEvent {
         Line: AsRef<str>,
         Self: Sized,
     {
-        let attrs = line.as_ref().split(':');
+        let attrs = line.as_ref().splitn(2, ':');
         let [level, message] = YtdlpAttributes::parse(attrs)?.into();
 
         Some(
@@ -522,6 +522,7 @@ impl FromYtdlpLines for PlaylistDownloadStartedEvent {
     }
 }
 
+#[derive(Clone)]
 struct YtdlpAttribute<'a>(&'a str);
 
 impl<'a> YtdlpAttribute<'a> {
