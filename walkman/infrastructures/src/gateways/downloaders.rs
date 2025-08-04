@@ -6,10 +6,13 @@ use ::use_cases::gateways::ChannelDownloader;
 use use_cases::models::descriptors::ChannelMetadata;
 use use_cases::models::descriptors::PartiallyResolvedChannel;
 use ::use_cases::models::descriptors::PlaylistMetadata;
+use use_cases::models::descriptors::ResolvedChannel;
 use use_cases::models::descriptors::UnresolvedPlaylist;
 use ::use_cases::models::descriptors::UnresolvedVideo;
 use ::use_cases::models::descriptors::VideoMetadata;
+use use_cases::models::events::ChannelDownloadCompletedEvent;
 use ::use_cases::models::events::ChannelDownloadEvent;
+use use_cases::models::events::ChannelDownloadProgressUpdatedEvent;
 use use_cases::models::events::ChannelDownloadStartedEvent;
 use ::std::ops::Not;
 use ::use_cases::gateways::PlaylistDownloader;
@@ -41,7 +44,10 @@ use crate::utils::extensions::OptionExt;
 #[builder(on(_, into))]
 pub struct YtdlpDownloader {
     directory: MaybeOwnedPath,
+
+    #[allow(dead_code)]
     workers: u64,
+
     per_worker_cooldown: ::std::time::Duration,
 
     #[builder(skip = ::std::sync::Arc::new(::tokio::sync::Semaphore::new(workers as usize)))]
@@ -199,7 +205,7 @@ impl PlaylistDownloader for YtdlpDownloader {
 
                                             video_download_events_tx.send(event)?;
 
-                                            Ok::<_, ::anyhow::Error>(())
+                                            Ok(())
                                         })
                                         .await
                                 },
@@ -260,94 +266,251 @@ impl ChannelDownloader for YtdlpDownloader {
         let (channel_download_events_tx, channel_download_events_rx) = ::tokio::sync::mpsc::unbounded_channel();
         let (diagnostic_events_tx, diagnostic_events_rx) = ::tokio::sync::mpsc::unbounded_channel();
 
-        // TODO: Make this not ugly!
-        #[rustfmt::skip]
-        let (stdout, stderr) = TokioCommandExecutor::execute_all([
-            ("yt-dlp", [
-                &*url,
-                "--quiet",
-                "--color", "no_color",
-                "--print", "[channel-started:metadata]%(channel_url)s;%(channel_id)s;%(channel)s",
-                "",
-            ]),
-            ("yt-dlp", [
-                &format!("{}/videos", &*url),
-                "--quiet",
-                "--color", "no_color",
-                "--print", "[channel-started:video]%(id)s;%(webpage_url)s",
-                "",
-            ]),
-            ("yt-dlp", [
-                &format!("{}/playlists", &*url),
-                "--quiet",
-                "--color", "no_color",
-                "--flat-playlist",
-                "--print", "%(id)s;%(url)s",
-            ]),
-        ])?;
+        ::tokio::spawn(async move {
+            // TODO: Make this not ugly!
+            #[rustfmt::skip]
+            let (stdout, stderr) = TokioCommandExecutor::execute_all([
+                ("yt-dlp", [
+                    &*url,
+                    "--quiet",
+                    "--color", "no_color",
+                    "--print", "[channel-started:metadata]%(channel_url)s;%(channel_id)s;%(channel)s",
+                ]),
+                ("yt-dlp", [
+                    &format!("{}/videos", &*url),
+                    "--quiet",
+                    "--color", "no_color",
+                    "--print", "[channel-started:video]%(id)s;%(webpage_url)s",
+                ]),
+                ("yt-dlp", [
+                    &format!("{}/playlists", &*url),
+                    // "--quiet",
+                    "--color", "no_color",
+                    "--flat-playlist",
+                    "--print", "%(id)s;%(url)s",
+                ]),
+            ])?;
 
-        let channel = ::tokio::spawn({
-            let channel_download_events_tx = channel_download_events_tx.clone();
-            let diagnostic_events_tx = diagnostic_events_tx.clone();
+            let (channel, _) = ::tokio::try_join!(
+                async {
+                    let event = ChannelDownloadStartedEvent::from_lines(stdout).await.ok()?;
+                    let channel = event.channel.clone();
 
-            async move {
-                let (channel, _) = ::tokio::try_join!(
-                    async {
-                        let event = ChannelDownloadStartedEvent::from_lines(stdout).await.ok()?;
-                        let channel = event.channel.clone();
+                    channel_download_events_tx.send(ChannelDownloadEvent::Started(event))?;
 
-                        channel_download_events_tx.send(ChannelDownloadEvent::Started(event))?;
+                    Ok(channel)
+                },
+                async {
+                    stderr
+                        .filter_map(|line| async { DiagnosticEvent::from_line(line) })
+                        .map(Ok)
+                        .try_for_each(|event| async { diagnostic_events_tx.send(event) })
+                        .await
+                        .map_err(::anyhow::Error::from)
+                },
+            )?;
 
-                        Ok(channel)
-                    },
-                    async {
-                        stderr
-                            .filter_map(|line| async { DiagnosticEvent::from_line(line) })
-                            .map(Ok)
-                            .try_for_each(|event| async { diagnostic_events_tx.send(event) })
-                            .await
-                            .map_err(::anyhow::Error::from)
-                    },
-                )?;
+            let completed_videos = ::std::sync::Arc::new(::std::sync::atomic::AtomicU64::default());
+            let total_videos = channel.videos.as_deref().map(|videos| videos.len() as u64).unwrap_or_default();
+            let completed_playlists = ::std::sync::Arc::new(::std::sync::atomic::AtomicU64::default());
+            let total_playlists = channel.playlists.as_deref().map(|playlists| playlists.len() as u64).unwrap_or_default();
 
-                Ok::<_, ::anyhow::Error>(channel)
-            }
-        })
-        .await??;
+            let videos = ::std::sync::Arc::new(::tokio::sync::Mutex::new(Vec::with_capacity(total_videos as usize)));
+            let playlists = ::std::sync::Arc::new(::tokio::sync::Mutex::new(Vec::with_capacity(total_playlists as usize)));
 
-        // let channel_id = channel.id.clone();
+            let videos_completed_notify = ::std::sync::Arc::new(::tokio::sync::Notify::new());
+            let playlists_completed_notify = ::std::sync::Arc::new(::tokio::sync::Notify::new());
 
-        // let completed_videos = ::std::sync::Arc::new(::std::sync::atomic::AtomicU64::new(0));
-        // let total_videos = channel.videos.as_deref().map(|videos| videos.len() as u64).unwrap_or_default();
-        // let completed_playlists = ::std::sync::Arc::new(::std::sync::atomic::AtomicU64::new(0));
-        // let total_playlists = channel.playlists.as_deref().map(|playlists| playlists.len() as u64).unwrap_or_default();
+            ::tokio::try_join!(
+                async {
+                    channel.videos
+                        .as_deref()
+                        .into_iter()
+                        .flatten()
+                        .cloned()
+                        .for_each(|video| {
+                            ::tokio::spawn({
+                                let this = ::std::sync::Arc::clone(&self);
 
-        // let resolved_videos: ::std::sync::Arc<::tokio::sync::Mutex<Vec<_>>> =
-        //     ::std::sync::Arc::new(::tokio::sync::Mutex::new(Vec::with_capacity(total_videos as usize)));
+                                let video_download_events_tx = video_download_events_tx.clone();
+                                let channel_download_events_tx = channel_download_events_tx.clone();
+                                let diagnostic_events_tx = diagnostic_events_tx.clone();
 
-        // let unresolved_videos: ::std::sync::Arc<::tokio::sync::Mutex<::std::collections::VecDeque<_>>> =
-        //     ::std::sync::Arc::new(::tokio::sync::Mutex::new(
-        //         channel
-        //             .videos
-        //             .as_deref()
-        //             .map(|videos| videos.iter().cloned().collect())
-        //             .unwrap_or_default(),
-        //     ));
+                                let channel_id = channel.id.clone();
 
-        // let resolved_playlists: ::std::sync::Arc<::tokio::sync::Mutex<Vec<_>>> =
-        //     ::std::sync::Arc::new(::tokio::sync::Mutex::new(Vec::with_capacity(total_playlists as usize)));
+                                let completed_videos = ::std::sync::Arc::clone(&completed_videos);
+                                let completed_playlists = ::std::sync::Arc::clone(&completed_playlists);
 
-        // let unresolved_playlists: ::std::sync::Arc<::tokio::sync::Mutex<::std::collections::VecDeque<_>>> =
-        //     ::std::sync::Arc::new(::tokio::sync::Mutex::new(
-        //         channel
-        //             .playlists
-        //             .as_deref()
-        //             .map(|playlists| playlists.iter().cloned().collect())
-        //             .unwrap_or_default(),
-        //     ));
+                                let videos = ::std::sync::Arc::clone(&videos);
+                                let videos_completed_notify = ::std::sync::Arc::clone(&videos_completed_notify);
 
-        // let videos_completed_notify = ::std::sync::Arc::new(::tokio::sync::Notify::new());
-        // let playlists_completed_notify = ::std::sync::Arc::new(::tokio::sync::Notify::new());
+                                async move {
+                                    let worker = this.worker_pool.acquire().await?;
+
+                                    let (video_download_events, diagnostic_events) = VideoDownloader::download(::std::sync::Arc::clone(&this), video.url.clone().into()).await?;
+
+                                    ::tokio::try_join!(
+                                        async {
+                                            video_download_events
+                                                .map(Ok)
+                                                .try_for_each(|event| async {
+                                                    if let VideoDownloadEvent::Completed(ref event) = event {
+                                                        completed_videos.fetch_add(1, ::std::sync::atomic::Ordering::Relaxed);
+                                                        videos.lock().await.push(event.video.clone());
+
+                                                        let event = ChannelDownloadProgressUpdatedEvent::builder()
+                                                            .channel_id(channel_id.clone())
+                                                            .completed_videos(completed_videos.load(::std::sync::atomic::Ordering::Relaxed))
+                                                            .total_videos(total_videos)
+                                                            .completed_playlists(completed_playlists.load(::std::sync::atomic::Ordering::Relaxed))
+                                                            .total_playlists(total_playlists)
+                                                            .build();
+
+                                                        channel_download_events_tx
+                                                            .send(ChannelDownloadEvent::ProgressUpdated(event))?;
+                                                    }
+
+                                                    video_download_events_tx.send(event)?;
+
+                                                    Ok(())
+                                                })
+                                                .await
+                                        },
+                                        async {
+                                            diagnostic_events
+                                                .map(Ok)
+                                                .try_for_each(|event| async { diagnostic_events_tx.send(event) })
+                                                .await
+                                                .map_err(::anyhow::Error::from)
+                                        },
+                                    )?;
+
+                                    ::tokio::time::sleep(this.per_worker_cooldown).await;
+                                    ::core::mem::drop(worker);
+
+                                    if completed_videos.load(::std::sync::atomic::Ordering::Relaxed) == total_videos {
+                                        videos_completed_notify.notify_one();
+                                    }
+
+                                    Ok::<_, ::anyhow::Error>(())
+                                }
+                            });
+                        });
+
+                    Ok::<_, ::anyhow::Error>(())
+                },
+
+                async {
+                    channel.playlists
+                        .as_deref()
+                        .into_iter()
+                        .flatten()
+                        .cloned()
+                        .for_each(|playlist| {
+                            ::tokio::spawn({
+                                let this = ::std::sync::Arc::clone(&self);
+
+                                let video_download_events_tx = video_download_events_tx.clone();
+                                let playlist_download_events_tx = playlist_download_events_tx.clone();
+                                let channel_download_events_tx = channel_download_events_tx.clone();
+                                let diagnostic_events_tx = diagnostic_events_tx.clone();
+
+                                let channel_id = channel.id.clone();
+
+                                let completed_videos = ::std::sync::Arc::clone(&completed_videos);
+                                let completed_playlists = ::std::sync::Arc::clone(&completed_playlists);
+
+                                let playlists = ::std::sync::Arc::clone(&playlists);
+                                let playlists_completed_notify = ::std::sync::Arc::clone(&playlists_completed_notify);
+
+                                async move {
+                                    let worker = this.worker_pool.acquire().await?;
+
+                                    let (video_download_events, playlist_download_events, diagnostic_events) = PlaylistDownloader::download(::std::sync::Arc::clone(&this), playlist.url.clone().into()).await?;
+
+                                    ::tokio::try_join!(
+                                        async {
+                                            video_download_events
+                                                .map(Ok)
+                                                .try_for_each(|event| async { video_download_events_tx.send(event) })
+                                                .await
+                                                .map_err(::anyhow::Error::from)
+                                        },
+                                        async {
+                                            playlist_download_events
+                                                .map(Ok)
+                                                .try_for_each(|event| async {
+                                                    if let PlaylistDownloadEvent::Completed(ref event) = event {
+                                                        completed_playlists.fetch_add(1, ::std::sync::atomic::Ordering::Relaxed);
+                                                        playlists.lock().await.push(event.playlist.clone());
+
+                                                        let event = ChannelDownloadProgressUpdatedEvent::builder()
+                                                            .channel_id(channel_id.clone())
+                                                            .completed_videos(completed_videos.load(::std::sync::atomic::Ordering::Relaxed))
+                                                            .total_videos(total_videos)
+                                                            .completed_playlists(completed_playlists.load(::std::sync::atomic::Ordering::Relaxed))
+                                                            .total_playlists(total_playlists)
+                                                            .build();
+
+                                                        channel_download_events_tx
+                                                            .send(ChannelDownloadEvent::ProgressUpdated(event))?;
+                                                    }
+
+                                                    playlist_download_events_tx.send(event)?;
+
+                                                    Ok(())
+                                                })
+                                                .await
+                                        },
+                                        async {
+                                            diagnostic_events
+                                                .map(Ok)
+                                                .try_for_each(|event| async { diagnostic_events_tx.send(event) })
+                                                .await
+                                                .map_err(::anyhow::Error::from)
+                                        },
+                                    )?;
+
+                                    ::tokio::time::sleep(this.per_worker_cooldown).await;
+                                    ::core::mem::drop(worker);
+
+                                    if completed_playlists.load(::std::sync::atomic::Ordering::Relaxed) == total_playlists {
+                                        playlists_completed_notify.notify_one();
+                                    }
+
+                                    Ok::<_, ::anyhow::Error>(())
+                                }
+                            });
+                        });
+
+                    Ok::<_, ::anyhow::Error>(())
+                },
+            )?;
+            
+            ::tokio::join!(
+                videos_completed_notify.notified(),
+                playlists_completed_notify.notified(),
+            );
+
+            let videos = ::std::mem::take(&mut *videos.lock().await);
+            let videos = videos.is_empty().not().then_some(videos.into());
+
+            let playlists = ::std::mem::take(&mut *playlists.lock().await);
+            let playlists = playlists.is_empty().not().then_some(playlists.into());
+
+            let channel = ResolvedChannel::builder()
+                .id(channel.id)
+                .url(channel.url)
+                .metadata(channel.metadata)
+                .videos(videos)
+                .playlists(playlists)
+                .build();
+
+            let event = ChannelDownloadCompletedEvent { channel };
+            channel_download_events_tx.send(ChannelDownloadEvent::Completed(event))?;
+
+            Ok::<_, ::anyhow::Error>(())
+        });
 
         Ok((
             ::std::boxed::Box::pin(::tokio_stream::wrappers::UnboundedReceiverStream::new(video_download_events_rx)),
