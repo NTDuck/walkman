@@ -80,7 +80,7 @@ impl VideoDownloader for YtdlpDownloader {
                 "--progress",
                 "--print", "before_dl:[video-started]%(id)s;%(webpage_url)s;%(title)s;%(album)s;%(artist)s;%(genre)s",
                 "--progress-template", "[video-downloading]%(info.id)s;%(progress.eta)s;%(progress.elapsed)s;%(progress.downloaded_bytes)s;%(progress.total_bytes)s;%(progress.speed)s",
-                "--print", "after_video:[video-completed]%(id)s;%(webpage_url)s;%(title)s;%(album)s;%(artist)s;%(genre)s;%(filepath)s",
+                "--print", "after_move:[video-completed]%(id)s;%(webpage_url)s;%(title)s;%(album)s;%(artist)s;%(genre)s;%(filepath)s",
             ])?;
 
             ::tokio::try_join!(
@@ -698,6 +698,14 @@ impl FromYtdlpLine for VideoDownloadCompletedEvent {
         let [id, url, title, album, artists, genres, path] = YtdlpAttributes::parse(attrs)?.into();
 
         ::tracing::debug!("Parsed line `{}` as `VideoDownloadCompletedEvent`", line.as_ref());
+
+        
+        ::tracing::debug!("SOS Path: {:?}", path.clone());
+        ::tracing::debug!("SOS Path: {:?}", path.clone().singlevalued());
+        ::tracing::debug!("SOS: {:?}", match path.clone().singlevalued()? {
+            MaybeOwnedString::Borrowed(path) => MaybeOwnedPath::Borrowed(path.as_ref()),
+            MaybeOwnedString::Owned(path) => MaybeOwnedPath::Owned(path.into()),
+        });
 
         Some(
             Self::builder()
