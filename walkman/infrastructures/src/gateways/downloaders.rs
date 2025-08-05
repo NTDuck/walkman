@@ -3,17 +3,17 @@ use ::domain::ChannelUrl;
 use ::domain::PlaylistUrl;
 use ::domain::VideoUrl;
 use ::use_cases::gateways::ChannelDownloader;
-use use_cases::models::descriptors::ChannelMetadata;
-use use_cases::models::descriptors::PartiallyResolvedChannel;
+use ::use_cases::models::descriptors::ChannelMetadata;
+use ::use_cases::models::descriptors::PartiallyResolvedChannel;
 use ::use_cases::models::descriptors::PlaylistMetadata;
-use use_cases::models::descriptors::ResolvedChannel;
-use use_cases::models::descriptors::UnresolvedPlaylist;
+use ::use_cases::models::descriptors::ResolvedChannel;
+use ::use_cases::models::descriptors::UnresolvedPlaylist;
 use ::use_cases::models::descriptors::UnresolvedVideo;
 use ::use_cases::models::descriptors::VideoMetadata;
-use use_cases::models::events::ChannelDownloadCompletedEvent;
+use ::use_cases::models::events::ChannelDownloadCompletedEvent;
 use ::use_cases::models::events::ChannelDownloadEvent;
-use use_cases::models::events::ChannelDownloadProgressUpdatedEvent;
-use use_cases::models::events::ChannelDownloadStartedEvent;
+use ::use_cases::models::events::ChannelDownloadProgressUpdatedEvent;
+use ::use_cases::models::events::ChannelDownloadStartedEvent;
 use ::std::ops::Not;
 use ::use_cases::gateways::PlaylistDownloader;
 use ::use_cases::gateways::VideoDownloader;
@@ -65,9 +65,9 @@ impl VideoDownloader for YtdlpDownloader {
         ::tokio::spawn(async move {
             #[rustfmt::skip]
             let (stdout, stderr) = TokioCommandExecutor::execute("yt-dlp", [
+                &*url,
                 "--quiet",
                 "--color", "no_color",
-                &*url,
                 "--paths", self.directory.to_str().ok()?,
                 "--no-playlist",
                 "--format", "bestaudio",
@@ -75,7 +75,6 @@ impl VideoDownloader for YtdlpDownloader {
                 "--audio-format", "mp3",
                 "--output", "%(title)s.%(ext)s",
                 "--newline",
-                "--no-part",
                 "--abort-on-error",
                 "--force-overwrites",
                 "--progress",
@@ -126,9 +125,9 @@ impl PlaylistDownloader for YtdlpDownloader {
         ::tokio::spawn(async move {
             #[rustfmt::skip]
             let (stdout, stderr) = TokioCommandExecutor::execute("yt-dlp", [
+                &*url,
                 "--quiet",
                 "--color", "no_color",
-                &*url,
                 "--flat-playlist",
                 "--yes-playlist",
                 "--print", "playlist:[playlist-started:metadata]%(id)s;%(webpage_url)s;%(title)s",
@@ -154,12 +153,16 @@ impl PlaylistDownloader for YtdlpDownloader {
                 },
             )?;
 
+            ::tracing::debug!("Downloaded playlist `{:?}`", playlist);
+
             let completed_videos = ::std::sync::Arc::new(::std::sync::atomic::AtomicU64::new(0));
             let total_videos = playlist.videos.as_deref().map(|videos| videos.len() as u64).unwrap_or_default();
 
             let videos = ::std::sync::Arc::new(::tokio::sync::Mutex::new(Vec::with_capacity(total_videos as usize)));
 
             let videos_completed_notify = ::std::sync::Arc::new(::tokio::sync::Notify::new());
+
+            ::tracing::debug!("Downloaded videos `{:?}` (`{}`/`{}`)", videos, completed_videos.load(::std::sync::atomic::Ordering::Relaxed), total_videos);
 
             playlist.videos
                 .as_deref()
@@ -221,6 +224,8 @@ impl PlaylistDownloader for YtdlpDownloader {
 
                             ::tokio::time::sleep(this.per_worker_cooldown).await;
                             ::core::mem::drop(worker);
+
+                            ::tracing::debug!("Downloaded videos `{:?}` (`{}`/`{}`)", videos, completed_videos.load(::std::sync::atomic::Ordering::Relaxed), total_videos);
 
                             if completed_videos.load(::std::sync::atomic::Ordering::Relaxed) == total_videos {
                                 videos_completed_notify.notify_one();
@@ -620,6 +625,8 @@ impl FromYtdlpLine for VideoDownloadEvent {
         Line: AsRef<str>,
         Self: Sized,
     {
+        ::tracing::debug!("Parsing line `{}` as `VideoDownloadEvent`", line.as_ref());
+
         let line = line.as_ref();
 
         VideoDownloadProgressUpdatedEvent::from_line(line)
@@ -637,6 +644,8 @@ impl FromYtdlpLine for VideoDownloadStartedEvent {
     {
         let attrs = line.as_ref().strip_prefix("[video-started]")?.split(';');
         let [id, url, title, album, artists, genres] = YtdlpAttributes::parse(attrs)?.into();
+
+        ::tracing::debug!("Parsed line `{}` as `VideoDownloadStartedEvent`", line.as_ref());
 
         Some(
             Self::builder()
@@ -664,6 +673,8 @@ impl FromYtdlpLine for VideoDownloadProgressUpdatedEvent {
         let attrs = line.as_ref().strip_prefix("[video-downloading]")?.split(';');
         let [id, eta, elapsed, downloaded_bytes, total_bytes, bytes_per_second] = YtdlpAttributes::parse(attrs)?.into();
 
+        ::tracing::debug!("Parsed line `{}` as `VideoDownloadProgressUpdatedEvent`", line.as_ref());
+
         Some(
             Self::builder()
                 .video_id(id.singlevalued()?)
@@ -685,6 +696,8 @@ impl FromYtdlpLine for VideoDownloadCompletedEvent {
     {
         let attrs = line.as_ref().strip_prefix("[video-completed]")?.split(';');
         let [id, url, title, album, artists, genres, path] = YtdlpAttributes::parse(attrs)?.into();
+
+        ::tracing::debug!("Parsed line `{}` as `VideoDownloadCompletedEvent`", line.as_ref());
 
         Some(
             Self::builder()
@@ -713,8 +726,12 @@ impl FromYtdlpLine for DiagnosticEvent {
         Line: AsRef<str>,
         Self: Sized,
     {
+        ::tracing::debug!("Parsing line `{}` as `DiagnosticEvent`", line.as_ref());
+
         let attrs = line.as_ref().splitn(2, ':');
         let [level, message] = YtdlpAttributes::parse(attrs)?.into();
+
+        ::tracing::debug!("Parsed line `{}` as `DiagnosticEvent`", line.as_ref());
 
         Some(
             Self::builder()
@@ -752,6 +769,8 @@ impl FromYtdlpLines for PlaylistDownloadStartedEvent {
         ::futures::pin_mut!(lines);
 
         while let Some(line) = lines.next().await {
+            ::tracing::debug!("Parsing line `{}` as `PlaylistDownloadStartedEvent`", line.as_ref());
+
             if let Some(line) = line.as_ref().strip_prefix("[playlist-started:video]") {
                 let attrs = line.split(';');
                 let [id, url] = YtdlpAttributes::parse(attrs)?.into();
@@ -801,8 +820,8 @@ impl FromYtdlpLines for ChannelDownloadStartedEvent {
         ::futures::pin_mut!(lines);
 
         while let Some(line) = lines.next().await {
-            println!("Line: {}", line.as_ref());
-            
+            ::tracing::debug!("Parsing line `{}` as `ChannelDownloadStartedEvent`", line.as_ref());
+
             if let Some(line) = line.as_ref().strip_prefix("[channel-started:video]") {
                 let attrs = line.split(';');
                 let [id, url] = YtdlpAttributes::parse(attrs)?.into();
@@ -849,7 +868,7 @@ impl FromYtdlpLines for ChannelDownloadStartedEvent {
     }
 }
 
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 struct YtdlpAttribute<'a>(&'a str);
 
 impl<'a> YtdlpAttribute<'a> {
@@ -871,6 +890,7 @@ impl<'a> YtdlpAttribute<'a> {
     }
 }
 
+#[derive(Debug, Clone)]
 struct YtdlpAttributes<'a, const N: usize>([YtdlpAttribute<'a>; N]);
 
 impl<'a, const N: usize> From<YtdlpAttributes<'a, N>> for [YtdlpAttribute<'a>; N] {

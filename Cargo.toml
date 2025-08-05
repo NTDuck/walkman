@@ -22,6 +22,7 @@ bon = "3.6.5"
 futures = "0.3.31"
 tokio = "1.47.1"
 tokio-stream = "0.1.17"
+tracing = "0.1.41"
 rayon = "1.10.0"
 
 # Crates that we choose to marry

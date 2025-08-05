@@ -1,30 +1,30 @@
 pub(crate) mod utils;
 
-use infrastructures::boundaries::AggregateView;
+use ::infrastructures::boundaries::AggregateView;
 use ::infrastructures::gateways::downloaders::YtdlpDownloader;
 use ::infrastructures::gateways::postprocessors::AlbumNamingPolicy;
-use infrastructures::gateways::postprocessors::ArtistsNamingPolicy;
+use ::infrastructures::gateways::postprocessors::ArtistsNamingPolicy;
 use ::infrastructures::gateways::postprocessors::Id3MetadataWriter;
 use ::infrastructures::gateways::repositories::FilesystemResourcesRepository;
 use ::use_cases::boundaries::Accept;
-use use_cases::boundaries::DownloadChannelOutputBoundary;
-use use_cases::boundaries::DownloadChannelRequestModel;
-use use_cases::boundaries::DownloadPlaylistOutputBoundary;
+use ::use_cases::boundaries::DownloadChannelOutputBoundary;
+use ::use_cases::boundaries::DownloadChannelRequestModel;
+use ::use_cases::boundaries::DownloadPlaylistOutputBoundary;
 use ::use_cases::boundaries::DownloadPlaylistRequestModel;
-use use_cases::boundaries::DownloadVideoOutputBoundary;
+use ::use_cases::boundaries::DownloadVideoOutputBoundary;
 use ::use_cases::boundaries::DownloadVideoRequestModel;
-use use_cases::boundaries::UpdateMediaOutputBoundary;
-use use_cases::boundaries::UpdateMediaRequestModel;
-use use_cases::gateways::ChannelDownloader;
-use use_cases::gateways::PlaylistDownloader;
+use ::use_cases::boundaries::UpdateMediaOutputBoundary;
+use ::use_cases::boundaries::UpdateMediaRequestModel;
+use ::use_cases::gateways::ChannelDownloader;
+use ::use_cases::gateways::PlaylistDownloader;
 use ::use_cases::gateways::PostProcessor;
-use use_cases::gateways::UrlRepository;
-use use_cases::gateways::VideoDownloader;
-use use_cases::interactors::DownloadChannelInteractor;
+use ::use_cases::gateways::UrlRepository;
+use ::use_cases::gateways::VideoDownloader;
+use ::use_cases::interactors::DownloadChannelInteractor;
 use ::use_cases::interactors::DownloadPlaylistInteractor;
 use ::use_cases::interactors::DownloadVideoInteractor;
-use use_cases::interactors::UpdateMediaInteractor;
-use use_cases::models::descriptors::ResolvedChannel;
+use ::use_cases::interactors::UpdateMediaInteractor;
+use ::use_cases::models::descriptors::ResolvedChannel;
 use ::use_cases::models::descriptors::ResolvedPlaylist;
 use ::use_cases::models::descriptors::ResolvedVideo;
 
@@ -34,6 +34,15 @@ use crate::utils::extensions::OptionExt;
 
 #[tokio::main]
 async fn main() -> Fallible<()> {
+    let writer = ::tracing_appender::rolling::minutely("logs", "cli.log");
+    let (writer, _guard) = ::tracing_appender::non_blocking(writer);
+    
+    ::tracing_subscriber::fmt()
+        .with_writer(writer)
+        .with_env_filter(::tracing_subscriber::EnvFilter::try_from_default_env()?)
+        .with_ansi(false)
+        .init();
+
     let command = ::clap::Command::new("walkman")
         .subcommand_required(true)
         .arg_required_else_help(true)

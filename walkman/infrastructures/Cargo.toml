@@ -25,6 +25,7 @@ rayon = { workspace = true }
 time = "0.3.41"
 tokio = { workspace = true, features = ["fs", "process", "sync", "time"] }
 tokio-stream = { workspace = true, features = ["io-util"] }
+tracing = { workspace = true }
 
 [lints]
 workspace = true

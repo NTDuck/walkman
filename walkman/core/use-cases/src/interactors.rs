@@ -68,6 +68,8 @@ impl Accept<BoxedStream<VideoDownloadEvent>> for DownloadVideoInteractor {
         ::futures::pin_mut!(events);
 
         while let Some(event) = events.next().await {
+            ::tracing::debug!("Received (IB) event `{:?}`", event); 
+
             ::std::sync::Arc::clone(&self.view).update(&event).await?;
 
             if let VideoDownloadEvent::Completed(event) = event {
@@ -87,6 +89,8 @@ impl Accept<BoxedStream<DiagnosticEvent>> for DownloadVideoInteractor {
         ::futures::pin_mut!(events);
 
         while let Some(event) = events.next().await {
+            ::tracing::debug!("Received (IB) event `{:?}`", event); 
+
             ::std::sync::Arc::clone(&self.view).update(&event).await?;
         }
 
@@ -134,6 +138,8 @@ impl Accept<BoxedStream<VideoDownloadEvent>> for DownloadPlaylistInteractor {
         ::futures::pin_mut!(events);
 
         while let Some(event) = events.next().await {
+            ::tracing::debug!("Received (IB) event `{:?}`", event); 
+
             ::std::sync::Arc::clone(&self.view).update(&event).await?;
         }
 
@@ -147,6 +153,8 @@ impl Accept<BoxedStream<PlaylistDownloadEvent>> for DownloadPlaylistInteractor {
         ::futures::pin_mut!(events);
 
         while let Some(event) = events.next().await {
+            ::tracing::debug!("Received (IB) event `{:?}`", event); 
+
             ::std::sync::Arc::clone(&self.view).update(&event).await?;
 
             if let PlaylistDownloadEvent::Completed(event) = event {
@@ -166,6 +174,8 @@ impl Accept<BoxedStream<DiagnosticEvent>> for DownloadPlaylistInteractor {
         ::futures::pin_mut!(events);
 
         while let Some(event) = events.next().await {
+            ::tracing::debug!("Received (IB) event `{:?}`", event); 
+
             ::std::sync::Arc::clone(&self.view).update(&event).await?;
         }
 
@@ -214,6 +224,8 @@ impl Accept<BoxedStream<VideoDownloadEvent>> for DownloadChannelInteractor {
         ::futures::pin_mut!(events);
 
         while let Some(event) = events.next().await {
+            ::tracing::debug!("Received (IB) event `{:?}`", event); 
+
             ::std::sync::Arc::clone(&self.view).update(&event).await?;
         }
 
@@ -227,6 +239,8 @@ impl Accept<BoxedStream<PlaylistDownloadEvent>> for DownloadChannelInteractor {
         ::futures::pin_mut!(events);
 
         while let Some(event) = events.next().await {
+            ::tracing::debug!("Received (IB) event `{:?}`", event); 
+
             ::std::sync::Arc::clone(&self.view).update(&event).await?;
         }
 
@@ -240,6 +254,8 @@ impl Accept<BoxedStream<ChannelDownloadEvent>> for DownloadChannelInteractor {
         ::futures::pin_mut!(events);
 
         while let Some(event) = events.next().await {
+            ::tracing::debug!("Received (IB) event `{:?}`", event); 
+
             ::std::sync::Arc::clone(&self.view).update(&event).await?;
 
             if let ChannelDownloadEvent::Completed(event) = event {
@@ -259,6 +275,8 @@ impl Accept<BoxedStream<DiagnosticEvent>> for DownloadChannelInteractor {
         ::futures::pin_mut!(events);
 
         while let Some(event) = events.next().await {
+            ::tracing::debug!("Received (IB) event `{:?}`", event); 
+
             ::std::sync::Arc::clone(&self.view).update(&event).await?;
         }
 
@@ -391,6 +409,8 @@ impl Accept<BoxedStream<VideoDownloadEvent>> for UpdateMediaInteractor {
         ::futures::pin_mut!(events);
 
         while let Some(event) = events.next().await {
+            ::tracing::debug!("Received (IB) event `{:?}`", event); 
+
             ::std::sync::Arc::clone(&self.view).update(&event).await?;
         }
 
@@ -407,6 +427,8 @@ impl Accept<(BoxedStream<VideoDownloadEvent>, WithPreprocessors)> for UpdateMedi
             ::std::sync::Arc::clone(&self.view).update(&event).await?;
 
             if let VideoDownloadEvent::Completed(event) = event {
+                ::tracing::debug!("Received (IB) event `{:?}`", event);  
+
                 for postprocessor in &*self.video_postprocessors {
                     ::std::sync::Arc::clone(postprocessor).process(&event.video).await?;
                 }
@@ -423,6 +445,8 @@ impl Accept<BoxedStream<PlaylistDownloadEvent>> for UpdateMediaInteractor {
         ::futures::pin_mut!(events);
 
         while let Some(event) = events.next().await {
+            ::tracing::debug!("Received (IB) event `{:?}`", event); 
+
             ::std::sync::Arc::clone(&self.view).update(&event).await?;
         }
 
@@ -436,6 +460,8 @@ impl Accept<(BoxedStream<PlaylistDownloadEvent>, WithPreprocessors)> for UpdateM
         ::futures::pin_mut!(events);
 
         while let Some(event) = events.next().await {
+            ::tracing::debug!("Received (IB) event `{:?}`", event); 
+
             ::std::sync::Arc::clone(&self.view).update(&event).await?;
 
             if let PlaylistDownloadEvent::Completed(event) = event {
@@ -455,6 +481,8 @@ impl Accept<(BoxedStream<ChannelDownloadEvent>, WithPreprocessors)> for UpdateMe
         ::futures::pin_mut!(events);
 
         while let Some(event) = events.next().await {
+            ::tracing::debug!("Received (IB) event `{:?}`", event); 
+
             ::std::sync::Arc::clone(&self.view).update(&event).await?;
 
             if let ChannelDownloadEvent::Completed(event) = event {
@@ -474,6 +502,8 @@ impl Accept<BoxedStream<DiagnosticEvent>> for UpdateMediaInteractor {
         ::futures::pin_mut!(events);
 
         while let Some(event) = events.next().await {
+            ::tracing::debug!("Received (IB) event `{:?}`", event); 
+
             ::std::sync::Arc::clone(&self.view).update(&event).await?;
         }
 

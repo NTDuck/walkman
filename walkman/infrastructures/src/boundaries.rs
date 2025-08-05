@@ -46,6 +46,8 @@ pub struct AggregateView {
 #[async_trait]
 impl Activate for AggregateView {
     async fn activate(self: ::std::sync::Arc<Self>) -> Fallible<()> {
+        ::tracing::debug!("Activated `AggregateView`");
+
         self.progress_bars.set_draw_target(::indicatif::ProgressDrawTarget::stderr());
 
         self.video_progress_bars_by_ids.lock().await
@@ -64,6 +66,8 @@ impl Activate for AggregateView {
     }
 
     async fn deactivate(self: ::std::sync::Arc<Self>) -> Fallible<()> {
+        ::tracing::debug!("Deactivated `AggregateView`");
+
         self.progress_bars.set_draw_target(::indicatif::ProgressDrawTarget::hidden());
 
         Ok(())
@@ -84,6 +88,8 @@ impl Update<VideoDownloadEvent> for AggregateView {
 #[async_trait]
 impl Update<VideoDownloadStartedEvent> for AggregateView {
     async fn update(self: ::std::sync::Arc<Self>, event: &VideoDownloadStartedEvent) -> Fallible<()> {
+        ::tracing::debug!("Received (OB) event `{:?}`", event);
+
         let mut video_progress_bars = self.video_progress_bars_by_ids.lock().await;
         let video_progress_bar = video_progress_bars
             .entry(event.video.id.clone())
@@ -113,6 +119,8 @@ impl Update<VideoDownloadStartedEvent> for AggregateView {
 #[async_trait]
 impl Update<VideoDownloadProgressUpdatedEvent> for AggregateView {
     async fn update(self: ::std::sync::Arc<Self>, event: &VideoDownloadProgressUpdatedEvent) -> Fallible<()> {
+        ::tracing::debug!("Received (OB) event `{:?}`", event);
+
         let video_progress_bars = self.video_progress_bars_by_ids.lock().await;
         let video_progress_bar = video_progress_bars.get(&event.video_id).ok()?;
 
@@ -125,6 +133,8 @@ impl Update<VideoDownloadProgressUpdatedEvent> for AggregateView {
 #[async_trait]
 impl Update<VideoDownloadCompletedEvent> for AggregateView {
     async fn update(self: ::std::sync::Arc<Self>, event: &VideoDownloadCompletedEvent) -> Fallible<()> {
+        ::tracing::debug!("Received (OB) event `{:?}`", event);
+
         let video_progress_bars = self.video_progress_bars_by_ids.lock().await;
         let video_progress_bar = video_progress_bars.get(&event.video.id).ok()?;
 
@@ -148,6 +158,8 @@ impl Update<PlaylistDownloadEvent> for AggregateView {
 #[async_trait]
 impl Update<PlaylistDownloadStartedEvent> for AggregateView {
     async fn update(self: ::std::sync::Arc<Self>, event: &PlaylistDownloadStartedEvent) -> Fallible<()> {
+        ::tracing::debug!("Received (OB) event `{:?}`", event);
+
         let mut playlist_progress_bars = self.playlist_progress_bars_by_ids.lock().await;
         let playlist_progress_bar = playlist_progress_bars
             .entry(event.playlist.id.clone())
@@ -180,6 +192,8 @@ impl Update<PlaylistDownloadStartedEvent> for AggregateView {
 #[async_trait]
 impl Update<PlaylistDownloadProgressUpdatedEvent> for AggregateView {
     async fn update(self: ::std::sync::Arc<Self>, event: &PlaylistDownloadProgressUpdatedEvent) -> Fallible<()> {
+        ::tracing::debug!("Received (OB) event `{:?}`", event);
+
         let playlist_progress_bars = self.playlist_progress_bars_by_ids.lock().await;
         let playlist_progress_bar = playlist_progress_bars.get(&event.playlist_id).ok()?;
 
@@ -192,6 +206,8 @@ impl Update<PlaylistDownloadProgressUpdatedEvent> for AggregateView {
 #[async_trait]
 impl Update<PlaylistDownloadCompletedEvent> for AggregateView {
     async fn update(self: ::std::sync::Arc<Self>, event: &PlaylistDownloadCompletedEvent) -> Fallible<()> {
+        ::tracing::debug!("Received (OB) event `{:?}`", event);
+
         let playlist_progress_bars = self.playlist_progress_bars_by_ids.lock().await;
         let playlist_progress_bar = playlist_progress_bars.get(&event.playlist.id).ok()?;
 
@@ -215,6 +231,8 @@ impl Update<ChannelDownloadEvent> for AggregateView {
 #[async_trait]
 impl Update<ChannelDownloadStartedEvent> for AggregateView {
     async fn update(self: ::std::sync::Arc<Self>, event: &ChannelDownloadStartedEvent) -> Fallible<()> {
+        ::tracing::debug!("Received (OB) event `{:?}`", event);
+
         let mut channel_progress_bars = self.channel_progress_bars_by_ids.lock().await;
         let channel_progress_bar = channel_progress_bars
             .entry(event.channel.id.clone())
@@ -244,6 +262,8 @@ impl Update<ChannelDownloadStartedEvent> for AggregateView {
 #[async_trait]
 impl Update<ChannelDownloadProgressUpdatedEvent> for AggregateView {
     async fn update(self: ::std::sync::Arc<Self>, event: &ChannelDownloadProgressUpdatedEvent) -> Fallible<()> {
+        ::tracing::debug!("Received (OB) event `{:?}`", event);
+
         let channel_progress_bars = self.channel_progress_bars_by_ids.lock().await;
         let channel_progress_bar = channel_progress_bars.get(&event.channel_id).ok()?;
 
@@ -256,6 +276,8 @@ impl Update<ChannelDownloadProgressUpdatedEvent> for AggregateView {
 #[async_trait]
 impl Update<ChannelDownloadCompletedEvent> for AggregateView {
     async fn update(self: ::std::sync::Arc<Self>, event: &ChannelDownloadCompletedEvent) -> Fallible<()> {
+        ::tracing::debug!("Received (OB) event `{:?}`", event);
+
         let channel_progress_bars = self.channel_progress_bars_by_ids.lock().await;
         let channel_progress_bar = channel_progress_bars.get(&event.channel.id).ok()?;
 
@@ -268,6 +290,8 @@ impl Update<ChannelDownloadCompletedEvent> for AggregateView {
 #[async_trait]
 impl Update<DiagnosticEvent> for AggregateView {
     async fn update(self: ::std::sync::Arc<Self>, event: &DiagnosticEvent) -> Fallible<()> {
+        ::tracing::debug!("Received (OB) event `{:?}`", event);
+
         use ::colored::Colorize as _;
 
         let DiagnosticEvent { message, level } = event;
