@@ -1,10 +1,8 @@
 yt-dlp "https://www.youtube.com/@What_Is_Mabisyo" --quiet --flat-playlist --color no_color --print "playlist:[channel-started:metadata]%(id)s;%(title)s;%(webpage_url)s" --print "video:[channel-started:video]%(id)s;(url)s"
+yt-dlp --flat-playlist "https://www.youtube.com/@What_Is_Mabisyo" --print "[channel-started:metadata]%(channel_url)s;%(channel_id)s;%(channel)s"
 
-yt-dlp --print "[channel-started:metadata]%(channel_url)s;%(channel_id)s;%(channel)s" "https://www.youtube.com/@ntduckk/"
-OK!
+yt-dlp --quiet --playlist-items 1 --print "video:[channel-started:metadata]%(channel_url)s;%(channel_id)s;%(channel)s" "https://www.youtube.com/@hagali/videos"
 
-yt-dlp --print "[channel-started:video]%(id)s;%(title)s;%(webpage_url)s" "https://www.youtube.com/@ntduckk/videos"
-OK!
+yt-dlp --quiet --flat-playlist --print "[channel-started:video]%(id)s;%(title)s;%(webpage_url)s" "https://www.youtube.com/@hagali/videos"
 
-yt-dlp --flat-playlist --print "%(id)s;%(title)s;%(url)s" "https://www.youtube.com/@ntduckk/playlists"
-OK!
+yt-dlp --quiet --flat-playlist --print "%(id)s;%(title)s;%(url)s" "https://www.youtube.com/@hagali/playlists"

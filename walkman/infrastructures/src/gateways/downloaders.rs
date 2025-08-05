@@ -65,9 +65,9 @@ impl VideoDownloader for YtdlpDownloader {
         ::tokio::spawn(async move {
             #[rustfmt::skip]
             let (stdout, stderr) = TokioCommandExecutor::execute("yt-dlp", [
-                &*url,
                 "--quiet",
                 "--color", "no_color",
+                &*url,
                 "--paths", self.directory.to_str().ok()?,
                 "--no-playlist",
                 "--format", "bestaudio",
@@ -75,12 +75,13 @@ impl VideoDownloader for YtdlpDownloader {
                 "--audio-format", "mp3",
                 "--output", "%(title)s.%(ext)s",
                 "--newline",
+                "--no-part",
                 "--abort-on-error",
                 "--force-overwrites",
                 "--progress",
                 "--print", "before_dl:[video-started]%(id)s;%(webpage_url)s;%(title)s;%(album)s;%(artist)s;%(genre)s",
                 "--progress-template", "[video-downloading]%(info.id)s;%(progress.eta)s;%(progress.elapsed)s;%(progress.downloaded_bytes)s;%(progress.total_bytes)s;%(progress.speed)s",
-                "--print", "after_move:[video-completed]%(id)s;%(webpage_url)s;%(title)s;%(album)s;%(artist)s;%(genre)s;%(filepath)s",
+                "--print", "after_video:[video-completed]%(id)s;%(webpage_url)s;%(title)s;%(album)s;%(artist)s;%(genre)s;%(filepath)s",
             ])?;
 
             ::tokio::try_join!(
@@ -125,9 +126,9 @@ impl PlaylistDownloader for YtdlpDownloader {
         ::tokio::spawn(async move {
             #[rustfmt::skip]
             let (stdout, stderr) = TokioCommandExecutor::execute("yt-dlp", [
-                &*url,
                 "--quiet",
                 "--color", "no_color",
+                &*url,
                 "--flat-playlist",
                 "--yes-playlist",
                 "--print", "playlist:[playlist-started:metadata]%(id)s;%(webpage_url)s;%(title)s",
@@ -269,25 +270,27 @@ impl ChannelDownloader for YtdlpDownloader {
         ::tokio::spawn(async move {
             // TODO: Make this not ugly!
             #[rustfmt::skip]
-            let (stdout, stderr) = TokioCommandExecutor::execute_all([
-                ("yt-dlp", [
-                    &*url,
+            let (stdout, stderr) = TokioCommandExecutor::execute_all(&[
+                ("yt-dlp", &[
                     "--quiet",
                     "--color", "no_color",
+                    &*url,
+                    "--playlist-items", "1",
+                    "--ignore-errors",
                     "--print", "[channel-started:metadata]%(channel_url)s;%(channel_id)s;%(channel)s",
                 ]),
-                ("yt-dlp", [
-                    &format!("{}/videos", &*url),
+                ("yt-dlp", &[
                     "--quiet",
                     "--color", "no_color",
+                    &format!("{}/videos", &*url),
                     "--print", "[channel-started:video]%(id)s;%(webpage_url)s",
                 ]),
-                ("yt-dlp", [
-                    &format!("{}/playlists", &*url),
-                    // "--quiet",
+                ("yt-dlp", &[
+                    "--quiet",
                     "--color", "no_color",
+                    &format!("{}/playlists", &*url),
                     "--flat-playlist",
-                    "--print", "%(id)s;%(url)s",
+                    "--print", "[channel-started:playlist]%(id)s;%(url)s",
                 ]),
             ])?;
 
@@ -528,17 +531,17 @@ trait CommandExecutor {
         Args: IntoIterator,
         Args::Item: AsRef<::std::ffi::OsStr>;
 
-    fn execute_all<Program, Args, const N: usize>(commands: [(Program, Args); N]) -> Fallible<(BoxedStream<MaybeOwnedString>, BoxedStream<MaybeOwnedString>)>
+    fn execute_all<Program, Arg>(commands: &[(Program, &[Arg])]) -> Fallible<(BoxedStream<MaybeOwnedString>, BoxedStream<MaybeOwnedString>)>
     where
         Program: AsRef<::std::ffi::OsStr>,
-        Args: IntoIterator,
-        Args::Item: AsRef<::std::ffi::OsStr>,
+        Arg: AsRef<::std::ffi::OsStr>,
     {
-        let mut stdouts = Vec::with_capacity(N);
-        let mut stderrs = Vec::with_capacity(N);
+        let mut stdouts = Vec::with_capacity(commands.len());
+        let mut stderrs = Vec::with_capacity(commands.len());
 
         commands
             .into_iter()
+            .map(|(program, args)| (program, args.into_iter()))
             .filter_map(|(program, args)| Self::execute(program, args).ok())
             .for_each(|(stdout, stderr)| {
                 stdouts.push(stdout);
@@ -798,6 +801,8 @@ impl FromYtdlpLines for ChannelDownloadStartedEvent {
         ::futures::pin_mut!(lines);
 
         while let Some(line) = lines.next().await {
+            println!("Line: {}", line.as_ref());
+            
             if let Some(line) = line.as_ref().strip_prefix("[channel-started:video]") {
                 let attrs = line.split(';');
                 let [id, url] = YtdlpAttributes::parse(attrs)?.into();
