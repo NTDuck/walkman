@@ -199,7 +199,7 @@ pub mod descriptors {
         pub url: MaybeOwnedString,
 
         pub metadata: PlaylistMetadata,
-        
+
         #[builder(required)]
         pub videos: Option<MaybeOwnedVec<UnresolvedVideo>>,
     }
@@ -222,12 +222,9 @@ pub mod descriptors {
                 id: this.id.into(),
                 url: this.url.into(),
                 metadata: this.metadata.into(),
-                videos: this.videos.map(|videos| videos
-                    .into_iter()
-                    .cloned()
-                    .map(Into::into)
-                    .collect::<Vec<_>>()
-                    .into()),
+                videos: this
+                    .videos
+                    .map(|videos| videos.iter().cloned().map(Into::into).collect::<Vec<_>>().into()),
             }
         }
     }
@@ -241,9 +238,7 @@ pub mod descriptors {
 
     impl From<::domain::PlaylistMetadata> for PlaylistMetadata {
         fn from(this: ::domain::PlaylistMetadata) -> Self {
-            Self {
-                title: this.title,
-            }
+            Self { title: this.title }
         }
     }
 
@@ -261,7 +256,7 @@ pub mod descriptors {
         pub url: MaybeOwnedString,
 
         pub metadata: ChannelMetadata,
-        
+
         #[builder(required)]
         pub videos: Option<MaybeOwnedVec<UnresolvedVideo>>,
 
@@ -290,18 +285,12 @@ pub mod descriptors {
                 id: this.id.into(),
                 url: this.url.into(),
                 metadata: this.metadata.into(),
-                videos: this.videos.map(|videos| videos
-                    .into_iter()
-                    .cloned()
-                    .map(Into::into)
-                    .collect::<Vec<_>>()
-                    .into()),
-                playlists: this.playlists.map(|playlists| playlists
-                    .into_iter()
-                    .cloned()
-                    .map(Into::into)
-                    .collect::<Vec<_>>()
-                    .into()),
+                videos: this
+                    .videos
+                    .map(|videos| videos.iter().cloned().map(Into::into).collect::<Vec<_>>().into()),
+                playlists: this
+                    .playlists
+                    .map(|playlists| playlists.iter().cloned().map(Into::into).collect::<Vec<_>>().into()),
             }
         }
     }
@@ -315,9 +304,7 @@ pub mod descriptors {
 
     impl From<::domain::ChannelMetadata> for ChannelMetadata {
         fn from(this: ::domain::ChannelMetadata) -> Self {
-            Self {
-                title: this.title,
-            }
+            Self { title: this.title }
         }
     }
 }

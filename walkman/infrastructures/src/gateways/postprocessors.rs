@@ -1,9 +1,9 @@
 use ::async_trait::async_trait;
+use ::rayon::prelude::*;
 use ::use_cases::gateways::PostProcessor;
 use ::use_cases::models::descriptors::ResolvedChannel;
 use ::use_cases::models::descriptors::ResolvedPlaylist;
 use ::use_cases::models::descriptors::ResolvedVideo;
-use ::rayon::prelude::*;
 
 use crate::utils::aliases::Fallible;
 
@@ -28,9 +28,7 @@ pub enum ArtistsNamingPolicy {
 #[async_trait]
 impl PostProcessor<ResolvedVideo> for Id3MetadataWriter {
     async fn process(self: ::std::sync::Arc<Self>, video: &ResolvedVideo) -> Fallible<()> {
-        self.write()
-            .video(video)
-            .call()
+        self.write().video(video).call()
     }
 }
 
@@ -42,10 +40,7 @@ impl PostProcessor<ResolvedPlaylist> for Id3MetadataWriter {
             .as_deref()
             .into_par_iter()
             .flatten()
-            .try_for_each(|video| ::std::sync::Arc::clone(&self).write()
-                .video(video)
-                .playlist(playlist)
-                .call())
+            .try_for_each(|video| ::std::sync::Arc::clone(&self).write().video(video).playlist(playlist).call())
     }
 }
 
@@ -54,29 +49,24 @@ impl PostProcessor<ResolvedChannel> for Id3MetadataWriter {
     async fn process(self: ::std::sync::Arc<Self>, channel: &ResolvedChannel) -> Fallible<()> {
         ::tokio::try_join!(
             async {
-                channel.videos
+                channel
+                    .videos
                     .as_deref()
                     .into_par_iter()
                     .flatten()
-                    .try_for_each(|video| ::std::sync::Arc::clone(&self).write()
-                        .video(video)
-                        .channel(channel)
-                        .call())
+                    .try_for_each(|video| ::std::sync::Arc::clone(&self).write().video(video).channel(channel).call())
             },
             async {
-                channel.playlists
-                    .as_deref()
-                    .into_par_iter()
-                    .flatten()
-                    .try_for_each(|playlist| playlist.videos
-                        .as_deref()
-                        .into_par_iter()
-                        .flatten()
-                        .try_for_each(|video| ::std::sync::Arc::clone(&self).write()
+                channel.playlists.as_deref().into_par_iter().flatten().try_for_each(|playlist| {
+                    playlist.videos.as_deref().into_par_iter().flatten().try_for_each(|video| {
+                        ::std::sync::Arc::clone(&self)
+                            .write()
                             .video(video)
                             .playlist(playlist)
                             .channel(channel)
-                            .call()))
+                            .call()
+                    })
+                })
             },
         )?;
 
@@ -87,7 +77,10 @@ impl PostProcessor<ResolvedChannel> for Id3MetadataWriter {
 #[::bon::bon]
 impl Id3MetadataWriter {
     #[builder]
-    fn write(self: ::std::sync::Arc<Self>, video: &ResolvedVideo, playlist: Option<&ResolvedPlaylist>, channel: Option<&ResolvedChannel>) -> Fallible<()> {
+    fn write(
+        self: ::std::sync::Arc<Self>, video: &ResolvedVideo, playlist: Option<&ResolvedPlaylist>,
+        channel: Option<&ResolvedChannel>,
+    ) -> Fallible<()> {
         use ::id3::TagLike as _;
 
         let mut tag = ::id3::Tag::new();

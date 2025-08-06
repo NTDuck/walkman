@@ -1,10 +1,15 @@
 use ::async_trait::async_trait;
-use ::domain::{ChannelUrl, PlaylistUrl, VideoUrl};
+use ::domain::ChannelUrl;
+use ::domain::PlaylistUrl;
+use ::domain::VideoUrl;
+use ::futures::prelude::*;
 use ::use_cases::gateways::Insert;
 use ::use_cases::gateways::UrlRepository;
-use ::futures::prelude::*;
 
-use crate::utils::aliases::{BoxedStream, Fallible, MaybeOwnedPath, MaybeOwnedString};
+use crate::utils::aliases::BoxedStream;
+use crate::utils::aliases::Fallible;
+use crate::utils::aliases::MaybeOwnedPath;
+use crate::utils::aliases::MaybeOwnedString;
 
 #[derive(::bon::Builder)]
 #[builder(on(_, into))]
@@ -16,7 +21,9 @@ pub struct FilesystemResourcesRepository {
 
 #[async_trait]
 impl UrlRepository for FilesystemResourcesRepository {
-    async fn values(self: ::std::sync::Arc<Self>) -> Fallible<(BoxedStream<VideoUrl>, BoxedStream<PlaylistUrl>, BoxedStream<ChannelUrl>)> {
+    async fn values(
+        self: ::std::sync::Arc<Self>,
+    ) -> Fallible<(BoxedStream<VideoUrl>, BoxedStream<PlaylistUrl>, BoxedStream<ChannelUrl>)> {
         let (video_urls, playlist_urls, channel_urls) = ::tokio::try_join!(
             ::std::sync::Arc::clone(&self).get(),
             ::std::sync::Arc::clone(&self).get(),
@@ -100,7 +107,8 @@ impl Get<BoxedStream<VideoUrl>> for FilesystemResourcesRepository {
                 Ok(::std::boxed::Box::pin(urls))
             },
 
-            Err(err) if err.kind() == ::std::io::ErrorKind::NotFound => Ok(::std::boxed::Box::pin(::futures::stream::empty())),
+            Err(err) if err.kind() == ::std::io::ErrorKind::NotFound =>
+                Ok(::std::boxed::Box::pin(::futures::stream::empty())),
             Err(err) => Err(err.into()),
         }
     }
@@ -123,7 +131,8 @@ impl Get<BoxedStream<PlaylistUrl>> for FilesystemResourcesRepository {
                 Ok(::std::boxed::Box::pin(urls))
             },
 
-            Err(err) if err.kind() == ::std::io::ErrorKind::NotFound => Ok(::std::boxed::Box::pin(::futures::stream::empty())),
+            Err(err) if err.kind() == ::std::io::ErrorKind::NotFound =>
+                Ok(::std::boxed::Box::pin(::futures::stream::empty())),
             Err(err) => Err(err.into()),
         }
     }
@@ -146,9 +155,9 @@ impl Get<BoxedStream<ChannelUrl>> for FilesystemResourcesRepository {
                 Ok(::std::boxed::Box::pin(urls))
             },
 
-            Err(err) if err.kind() == ::std::io::ErrorKind::NotFound => Ok(::std::boxed::Box::pin(::futures::stream::empty())),
+            Err(err) if err.kind() == ::std::io::ErrorKind::NotFound =>
+                Ok(::std::boxed::Box::pin(::futures::stream::empty())),
             Err(err) => Err(err.into()),
         }
     }
 }
-

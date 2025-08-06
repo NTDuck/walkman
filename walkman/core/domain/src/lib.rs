@@ -158,7 +158,7 @@ pub struct Channel {
     pub url: ChannelUrl,
 
     pub metadata: ChannelMetadata,
-    
+
     pub videos: Option<MaybeOwnedVec<Video>>,
     pub playlists: Option<MaybeOwnedVec<Playlist>>,
 }

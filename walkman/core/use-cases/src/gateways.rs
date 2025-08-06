@@ -28,7 +28,12 @@ pub trait PlaylistDownloader: ::core::marker::Send + ::core::marker::Sync {
 pub trait ChannelDownloader: ::core::marker::Send + ::core::marker::Sync {
     async fn download(
         self: ::std::sync::Arc<Self>, url: ChannelUrl,
-    ) -> Fallible<(BoxedStream<VideoDownloadEvent>, BoxedStream<PlaylistDownloadEvent>, BoxedStream<ChannelDownloadEvent>, BoxedStream<DiagnosticEvent>)>;
+    ) -> Fallible<(
+        BoxedStream<VideoDownloadEvent>,
+        BoxedStream<PlaylistDownloadEvent>,
+        BoxedStream<ChannelDownloadEvent>,
+        BoxedStream<DiagnosticEvent>,
+    )>;
 }
 
 #[async_trait]
@@ -37,8 +42,12 @@ pub trait PostProcessor<Artifact>: ::core::marker::Send + ::core::marker::Sync {
 }
 
 #[async_trait]
-pub trait UrlRepository: Insert<VideoUrl> + Insert<PlaylistUrl> + Insert<ChannelUrl> + ::core::marker::Send + ::core::marker::Sync {
-    async fn values(self: ::std::sync::Arc<Self>) -> Fallible<(BoxedStream<VideoUrl>, BoxedStream<PlaylistUrl>, BoxedStream<ChannelUrl>)>;
+pub trait UrlRepository:
+    Insert<VideoUrl> + Insert<PlaylistUrl> + Insert<ChannelUrl> + ::core::marker::Send + ::core::marker::Sync
+{
+    async fn values(
+        self: ::std::sync::Arc<Self>,
+    ) -> Fallible<(BoxedStream<VideoUrl>, BoxedStream<PlaylistUrl>, BoxedStream<ChannelUrl>)>;
 }
 
 #[async_trait]

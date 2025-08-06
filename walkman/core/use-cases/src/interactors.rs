@@ -43,14 +43,14 @@ pub struct DownloadVideoInteractor {
 impl Accept<DownloadVideoRequestModel> for DownloadVideoInteractor {
     async fn accept(self: ::std::sync::Arc<Self>, request: DownloadVideoRequestModel) -> Fallible<()> {
         let url: VideoUrl = request.url.into();
-        
+
         let (_, (video_download_events, diagnostic_events)) = ::tokio::try_join!(
             ::std::sync::Arc::clone(&self.urls).insert(url.clone()),
             ::std::sync::Arc::clone(&self.downloader).download(url.clone()),
         )?;
-        
+
         ::std::sync::Arc::clone(&self.view).activate().await?;
-        
+
         ::tokio::try_join!(
             ::std::sync::Arc::clone(&self).accept(video_download_events),
             ::std::sync::Arc::clone(&self).accept(diagnostic_events),
@@ -68,7 +68,7 @@ impl Accept<BoxedStream<VideoDownloadEvent>> for DownloadVideoInteractor {
         ::futures::pin_mut!(events);
 
         while let Some(event) = events.next().await {
-            ::tracing::debug!("Received (IB) event `{:?}`", event); 
+            ::tracing::debug!("Received (IB) event `{:?}`", event);
 
             ::std::sync::Arc::clone(&self.view).update(&event).await?;
 
@@ -89,7 +89,7 @@ impl Accept<BoxedStream<DiagnosticEvent>> for DownloadVideoInteractor {
         ::futures::pin_mut!(events);
 
         while let Some(event) = events.next().await {
-            ::tracing::debug!("Received (IB) event `{:?}`", event); 
+            ::tracing::debug!("Received (IB) event `{:?}`", event);
 
             ::std::sync::Arc::clone(&self.view).update(&event).await?;
         }
@@ -112,14 +112,14 @@ pub struct DownloadPlaylistInteractor {
 impl Accept<DownloadPlaylistRequestModel> for DownloadPlaylistInteractor {
     async fn accept(self: ::std::sync::Arc<Self>, request: DownloadPlaylistRequestModel) -> Fallible<()> {
         let url: PlaylistUrl = request.url.into();
-        
+
         let (_, (video_download_events, playlist_download_events, diagnostic_events)) = ::tokio::try_join!(
             ::std::sync::Arc::clone(&self.urls).insert(url.clone()),
             ::std::sync::Arc::clone(&self.downloader).download(url.clone()),
         )?;
-        
+
         ::std::sync::Arc::clone(&self.view).activate().await?;
-        
+
         ::tokio::try_join!(
             ::std::sync::Arc::clone(&self).accept(video_download_events),
             ::std::sync::Arc::clone(&self).accept(playlist_download_events),
@@ -138,7 +138,7 @@ impl Accept<BoxedStream<VideoDownloadEvent>> for DownloadPlaylistInteractor {
         ::futures::pin_mut!(events);
 
         while let Some(event) = events.next().await {
-            ::tracing::debug!("Received (IB) event `{:?}`", event); 
+            ::tracing::debug!("Received (IB) event `{:?}`", event);
 
             ::std::sync::Arc::clone(&self.view).update(&event).await?;
         }
@@ -153,7 +153,7 @@ impl Accept<BoxedStream<PlaylistDownloadEvent>> for DownloadPlaylistInteractor {
         ::futures::pin_mut!(events);
 
         while let Some(event) = events.next().await {
-            ::tracing::debug!("Received (IB) event `{:?}`", event); 
+            ::tracing::debug!("Received (IB) event `{:?}`", event);
 
             ::std::sync::Arc::clone(&self.view).update(&event).await?;
 
@@ -174,7 +174,7 @@ impl Accept<BoxedStream<DiagnosticEvent>> for DownloadPlaylistInteractor {
         ::futures::pin_mut!(events);
 
         while let Some(event) = events.next().await {
-            ::tracing::debug!("Received (IB) event `{:?}`", event); 
+            ::tracing::debug!("Received (IB) event `{:?}`", event);
 
             ::std::sync::Arc::clone(&self.view).update(&event).await?;
         }
@@ -197,14 +197,14 @@ pub struct DownloadChannelInteractor {
 impl Accept<DownloadChannelRequestModel> for DownloadChannelInteractor {
     async fn accept(self: ::std::sync::Arc<Self>, request: DownloadChannelRequestModel) -> Fallible<()> {
         let url: ChannelUrl = request.url.into();
-        
+
         let (_, (video_download_events, playlist_download_events, channel_download_events, diagnostic_events)) = ::tokio::try_join!(
             ::std::sync::Arc::clone(&self.urls).insert(url.clone()),
             ::std::sync::Arc::clone(&self.downloader).download(url.clone()),
         )?;
-        
+
         ::std::sync::Arc::clone(&self.view).activate().await?;
-        
+
         ::tokio::try_join!(
             ::std::sync::Arc::clone(&self).accept(video_download_events),
             ::std::sync::Arc::clone(&self).accept(playlist_download_events),
@@ -224,7 +224,7 @@ impl Accept<BoxedStream<VideoDownloadEvent>> for DownloadChannelInteractor {
         ::futures::pin_mut!(events);
 
         while let Some(event) = events.next().await {
-            ::tracing::debug!("Received (IB) event `{:?}`", event); 
+            ::tracing::debug!("Received (IB) event `{:?}`", event);
 
             ::std::sync::Arc::clone(&self.view).update(&event).await?;
         }
@@ -239,7 +239,7 @@ impl Accept<BoxedStream<PlaylistDownloadEvent>> for DownloadChannelInteractor {
         ::futures::pin_mut!(events);
 
         while let Some(event) = events.next().await {
-            ::tracing::debug!("Received (IB) event `{:?}`", event); 
+            ::tracing::debug!("Received (IB) event `{:?}`", event);
 
             ::std::sync::Arc::clone(&self.view).update(&event).await?;
         }
@@ -254,7 +254,7 @@ impl Accept<BoxedStream<ChannelDownloadEvent>> for DownloadChannelInteractor {
         ::futures::pin_mut!(events);
 
         while let Some(event) = events.next().await {
-            ::tracing::debug!("Received (IB) event `{:?}`", event); 
+            ::tracing::debug!("Received (IB) event `{:?}`", event);
 
             ::std::sync::Arc::clone(&self.view).update(&event).await?;
 
@@ -275,7 +275,7 @@ impl Accept<BoxedStream<DiagnosticEvent>> for DownloadChannelInteractor {
         ::futures::pin_mut!(events);
 
         while let Some(event) = events.next().await {
-            ::tracing::debug!("Received (IB) event `{:?}`", event); 
+            ::tracing::debug!("Received (IB) event `{:?}`", event);
 
             ::std::sync::Arc::clone(&self.view).update(&event).await?;
         }
@@ -335,7 +335,8 @@ impl Accept<BoxedStream<VideoUrl>> for UpdateMediaInteractor {
 #[async_trait]
 impl Accept<VideoUrl> for UpdateMediaInteractor {
     async fn accept(self: ::std::sync::Arc<Self>, url: VideoUrl) -> Fallible<()> {
-        let (video_download_events, diagnostic_events) = ::std::sync::Arc::clone(&self.video_downloader).download(url.clone()).await?;
+        let (video_download_events, diagnostic_events) =
+            ::std::sync::Arc::clone(&self.video_downloader).download(url.clone()).await?;
 
         ::tokio::try_join!(
             ::std::sync::Arc::clone(&self).accept((video_download_events, WithPreprocessors)),
@@ -362,7 +363,8 @@ impl Accept<BoxedStream<PlaylistUrl>> for UpdateMediaInteractor {
 #[async_trait]
 impl Accept<PlaylistUrl> for UpdateMediaInteractor {
     async fn accept(self: ::std::sync::Arc<Self>, url: PlaylistUrl) -> Fallible<()> {
-        let (video_download_events, playlist_download_events, diagnostic_events) = ::std::sync::Arc::clone(&self.playlist_downloader).download(url.clone()).await?;
+        let (video_download_events, playlist_download_events, diagnostic_events) =
+            ::std::sync::Arc::clone(&self.playlist_downloader).download(url.clone()).await?;
 
         ::tokio::try_join!(
             ::std::sync::Arc::clone(&self).accept(video_download_events),
@@ -390,7 +392,8 @@ impl Accept<BoxedStream<ChannelUrl>> for UpdateMediaInteractor {
 #[async_trait]
 impl Accept<ChannelUrl> for UpdateMediaInteractor {
     async fn accept(self: ::std::sync::Arc<Self>, url: ChannelUrl) -> Fallible<()> {
-        let (video_download_events, playlist_download_events, channel_download_events, diagnostic_events) = ::std::sync::Arc::clone(&self.channel_downloader).download(url.clone()).await?;
+        let (video_download_events, playlist_download_events, channel_download_events, diagnostic_events) =
+            ::std::sync::Arc::clone(&self.channel_downloader).download(url.clone()).await?;
 
         ::tokio::try_join!(
             ::std::sync::Arc::clone(&self).accept(video_download_events),
@@ -409,7 +412,7 @@ impl Accept<BoxedStream<VideoDownloadEvent>> for UpdateMediaInteractor {
         ::futures::pin_mut!(events);
 
         while let Some(event) = events.next().await {
-            ::tracing::debug!("Received (IB) event `{:?}`", event); 
+            ::tracing::debug!("Received (IB) event `{:?}`", event);
 
             ::std::sync::Arc::clone(&self.view).update(&event).await?;
         }
@@ -420,14 +423,16 @@ impl Accept<BoxedStream<VideoDownloadEvent>> for UpdateMediaInteractor {
 
 #[async_trait]
 impl Accept<(BoxedStream<VideoDownloadEvent>, WithPreprocessors)> for UpdateMediaInteractor {
-    async fn accept(self: ::std::sync::Arc<Self>, (events, _): (BoxedStream<VideoDownloadEvent>, WithPreprocessors)) -> Fallible<()> {
+    async fn accept(
+        self: ::std::sync::Arc<Self>, (events, _): (BoxedStream<VideoDownloadEvent>, WithPreprocessors),
+    ) -> Fallible<()> {
         ::futures::pin_mut!(events);
 
         while let Some(event) = events.next().await {
             ::std::sync::Arc::clone(&self.view).update(&event).await?;
 
             if let VideoDownloadEvent::Completed(event) = event {
-                ::tracing::debug!("Received (IB) event `{:?}`", event);  
+                ::tracing::debug!("Received (IB) event `{:?}`", event);
 
                 for postprocessor in &*self.video_postprocessors {
                     ::std::sync::Arc::clone(postprocessor).process(&event.video).await?;
@@ -445,7 +450,7 @@ impl Accept<BoxedStream<PlaylistDownloadEvent>> for UpdateMediaInteractor {
         ::futures::pin_mut!(events);
 
         while let Some(event) = events.next().await {
-            ::tracing::debug!("Received (IB) event `{:?}`", event); 
+            ::tracing::debug!("Received (IB) event `{:?}`", event);
 
             ::std::sync::Arc::clone(&self.view).update(&event).await?;
         }
@@ -456,11 +461,13 @@ impl Accept<BoxedStream<PlaylistDownloadEvent>> for UpdateMediaInteractor {
 
 #[async_trait]
 impl Accept<(BoxedStream<PlaylistDownloadEvent>, WithPreprocessors)> for UpdateMediaInteractor {
-    async fn accept(self: ::std::sync::Arc<Self>, (events, _): (BoxedStream<PlaylistDownloadEvent>, WithPreprocessors)) -> Fallible<()> {
+    async fn accept(
+        self: ::std::sync::Arc<Self>, (events, _): (BoxedStream<PlaylistDownloadEvent>, WithPreprocessors),
+    ) -> Fallible<()> {
         ::futures::pin_mut!(events);
 
         while let Some(event) = events.next().await {
-            ::tracing::debug!("Received (IB) event `{:?}`", event); 
+            ::tracing::debug!("Received (IB) event `{:?}`", event);
 
             ::std::sync::Arc::clone(&self.view).update(&event).await?;
 
@@ -477,11 +484,13 @@ impl Accept<(BoxedStream<PlaylistDownloadEvent>, WithPreprocessors)> for UpdateM
 
 #[async_trait]
 impl Accept<(BoxedStream<ChannelDownloadEvent>, WithPreprocessors)> for UpdateMediaInteractor {
-    async fn accept(self: ::std::sync::Arc<Self>, (events, _): (BoxedStream<ChannelDownloadEvent>, WithPreprocessors)) -> Fallible<()> {
+    async fn accept(
+        self: ::std::sync::Arc<Self>, (events, _): (BoxedStream<ChannelDownloadEvent>, WithPreprocessors),
+    ) -> Fallible<()> {
         ::futures::pin_mut!(events);
 
         while let Some(event) = events.next().await {
-            ::tracing::debug!("Received (IB) event `{:?}`", event); 
+            ::tracing::debug!("Received (IB) event `{:?}`", event);
 
             ::std::sync::Arc::clone(&self.view).update(&event).await?;
 
@@ -502,7 +511,7 @@ impl Accept<BoxedStream<DiagnosticEvent>> for UpdateMediaInteractor {
         ::futures::pin_mut!(events);
 
         while let Some(event) = events.next().await {
-            ::tracing::debug!("Received (IB) event `{:?}`", event); 
+            ::tracing::debug!("Received (IB) event `{:?}`", event);
 
             ::std::sync::Arc::clone(&self.view).update(&event).await?;
         }

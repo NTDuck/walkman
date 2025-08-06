@@ -1,4 +1,5 @@
 use ::async_trait::async_trait;
+use ::futures::prelude::*;
 use ::use_cases::boundaries::Activate;
 use ::use_cases::boundaries::Update;
 use ::use_cases::models::events::ChannelDownloadCompletedEvent;
@@ -15,12 +16,11 @@ use ::use_cases::models::events::VideoDownloadCompletedEvent;
 use ::use_cases::models::events::VideoDownloadEvent;
 use ::use_cases::models::events::VideoDownloadProgressUpdatedEvent;
 use ::use_cases::models::events::VideoDownloadStartedEvent;
-use ::futures::prelude::*;
 
 use crate::utils::aliases::Fallible;
 use crate::utils::aliases::MaybeOwnedString;
-use crate::utils::extensions::OptionExt;
 use crate::utils::extensions::EntryExt;
+use crate::utils::extensions::OptionExt;
 
 #[derive(::bon::Builder)]
 #[builder(on(_, into))]
@@ -29,18 +29,27 @@ pub struct AggregateView {
     progress_bars: ::indicatif::MultiProgress,
 
     #[builder(skip)]
-    video_progress_bars_by_ids: ::std::sync::Arc<::tokio::sync::Mutex<::std::collections::HashMap<MaybeOwnedString, ::std::sync::Arc<VideoProgressBar>>>>,
+    video_progress_bars_by_ids: ::std::sync::Arc<
+        ::tokio::sync::Mutex<::std::collections::HashMap<MaybeOwnedString, ::std::sync::Arc<VideoProgressBar>>>,
+    >,
     #[builder(skip)]
-    playlist_progress_bars_by_ids: ::std::sync::Arc<::tokio::sync::Mutex<::std::collections::HashMap<MaybeOwnedString, ::std::sync::Arc<PlaylistProgressBar>>>>,
+    playlist_progress_bars_by_ids: ::std::sync::Arc<
+        ::tokio::sync::Mutex<::std::collections::HashMap<MaybeOwnedString, ::std::sync::Arc<PlaylistProgressBar>>>,
+    >,
     #[builder(skip)]
-    channel_progress_bars_by_ids: ::std::sync::Arc<::tokio::sync::Mutex<::std::collections::HashMap<MaybeOwnedString, ::std::sync::Arc<ChannelProgressBar>>>>,
+    channel_progress_bars_by_ids: ::std::sync::Arc<
+        ::tokio::sync::Mutex<::std::collections::HashMap<MaybeOwnedString, ::std::sync::Arc<ChannelProgressBar>>>,
+    >,
 
     #[builder(skip)]
-    playlist_ids_by_video_ids: ::std::sync::Arc<::tokio::sync::Mutex<::std::collections::HashMap<MaybeOwnedString, MaybeOwnedString>>>,
+    playlist_ids_by_video_ids:
+        ::std::sync::Arc<::tokio::sync::Mutex<::std::collections::HashMap<MaybeOwnedString, MaybeOwnedString>>>,
     #[builder(skip)]
-    channel_ids_by_video_ids: ::std::sync::Arc<::tokio::sync::Mutex<::std::collections::HashMap<MaybeOwnedString, MaybeOwnedString>>>,
+    channel_ids_by_video_ids:
+        ::std::sync::Arc<::tokio::sync::Mutex<::std::collections::HashMap<MaybeOwnedString, MaybeOwnedString>>>,
     #[builder(skip)]
-    channel_ids_by_playlist_ids: ::std::sync::Arc<::tokio::sync::Mutex<::std::collections::HashMap<MaybeOwnedString, MaybeOwnedString>>>,
+    channel_ids_by_playlist_ids:
+        ::std::sync::Arc<::tokio::sync::Mutex<::std::collections::HashMap<MaybeOwnedString, MaybeOwnedString>>>,
 }
 
 #[async_trait]
@@ -50,15 +59,21 @@ impl Activate for AggregateView {
 
         self.progress_bars.set_draw_target(::indicatif::ProgressDrawTarget::stderr());
 
-        self.video_progress_bars_by_ids.lock().await
+        self.video_progress_bars_by_ids
+            .lock()
+            .await
             .values()
             .for_each(|progress_bar| progress_bar.tick());
 
-        self.playlist_progress_bars_by_ids.lock().await
+        self.playlist_progress_bars_by_ids
+            .lock()
+            .await
             .values()
             .for_each(|progress_bar| progress_bar.tick());
 
-        self.channel_progress_bars_by_ids.lock().await
+        self.channel_progress_bars_by_ids
+            .lock()
+            .await
             .values()
             .for_each(|progress_bar| progress_bar.tick());
 
@@ -94,18 +109,21 @@ impl Update<VideoDownloadStartedEvent> for AggregateView {
         let video_progress_bar = video_progress_bars
             .entry(event.video.id.clone())
             .or_insert_with_future(|| async {
-                let progress_bar = if let Some(channel_id) = self.channel_ids_by_video_ids.lock().await.get(&event.video.id) {
-                    let channel_progress_bars = self.channel_progress_bars_by_ids.lock().await;
-                    let channel_progress_bar = channel_progress_bars.get(channel_id).ok().unwrap();
-                    self.progress_bars.insert_after(&channel_progress_bar, VideoProgressBar::default().into())
-                } else if let Some(playlist_id) = self.playlist_ids_by_video_ids.lock().await.get(&event.video.id) {
-                    let playlist_progress_bars = self.playlist_progress_bars_by_ids.lock().await;
-                    let playlist_progress_bar = playlist_progress_bars.get(playlist_id).ok().unwrap();
-                    self.progress_bars.insert_after(&playlist_progress_bar, VideoProgressBar::default().into())
-                } else {
-                    self.progress_bars.add(VideoProgressBar::default().into())
-                };
-                
+                let progress_bar =
+                    if let Some(channel_id) = self.channel_ids_by_video_ids.lock().await.get(&event.video.id) {
+                        let channel_progress_bars = self.channel_progress_bars_by_ids.lock().await;
+                        let channel_progress_bar = channel_progress_bars.get(channel_id).ok().unwrap();
+                        self.progress_bars
+                            .insert_after(channel_progress_bar, VideoProgressBar::default().into())
+                    } else if let Some(playlist_id) = self.playlist_ids_by_video_ids.lock().await.get(&event.video.id) {
+                        let playlist_progress_bars = self.playlist_progress_bars_by_ids.lock().await;
+                        let playlist_progress_bar = playlist_progress_bars.get(playlist_id).ok().unwrap();
+                        self.progress_bars
+                            .insert_after(playlist_progress_bar, VideoProgressBar::default().into())
+                    } else {
+                        self.progress_bars.add(VideoProgressBar::default().into())
+                    };
+
                 ::std::sync::Arc::new(progress_bar.into())
             })
             .await;
@@ -164,23 +182,27 @@ impl Update<PlaylistDownloadStartedEvent> for AggregateView {
         let playlist_progress_bar = playlist_progress_bars
             .entry(event.playlist.id.clone())
             .or_insert_with_future(|| async {
-                let progress_bar = if let Some(channel_id) = self.channel_ids_by_playlist_ids.lock().await.get(&event.playlist.id) {
-                    let channel_progress_bars = self.channel_progress_bars_by_ids.lock().await;
-                    let channel_progress_bar = channel_progress_bars.get(channel_id).ok().unwrap();
-                    self.progress_bars.insert_after(&channel_progress_bar, PlaylistProgressBar::default().into())
-                } else {
-                    self.progress_bars.add(PlaylistProgressBar::default().into())
-                };
+                let progress_bar =
+                    if let Some(channel_id) = self.channel_ids_by_playlist_ids.lock().await.get(&event.playlist.id) {
+                        let channel_progress_bars = self.channel_progress_bars_by_ids.lock().await;
+                        let channel_progress_bar = channel_progress_bars.get(channel_id).ok().unwrap();
+                        self.progress_bars
+                            .insert_after(channel_progress_bar, PlaylistProgressBar::default().into())
+                    } else {
+                        self.progress_bars.add(PlaylistProgressBar::default().into())
+                    };
 
                 ::std::sync::Arc::new(progress_bar.into())
             })
             .await;
 
-        ::futures::stream::iter(event.playlist.videos
-            .as_deref()
-            .into_iter()
-            .flatten())
-            .for_each(|video| async { self.playlist_ids_by_video_ids.lock().await.insert(video.id.clone(), event.playlist.id.clone()); })
+        ::futures::stream::iter(event.playlist.videos.as_deref().into_iter().flatten())
+            .for_each(|video| async {
+                self.playlist_ids_by_video_ids
+                    .lock()
+                    .await
+                    .insert(video.id.clone(), event.playlist.id.clone());
+            })
             .await;
 
         ::std::sync::Arc::clone(playlist_progress_bar).update(event).await?;
@@ -234,22 +256,26 @@ impl Update<ChannelDownloadStartedEvent> for AggregateView {
         ::tracing::debug!("Received (OB) event `{:?}`", event);
 
         let mut channel_progress_bars = self.channel_progress_bars_by_ids.lock().await;
-        let channel_progress_bar = channel_progress_bars
-            .entry(event.channel.id.clone())
-            .or_insert_with(|| ::std::sync::Arc::new(self.progress_bars.add(ChannelProgressBar::default().into()).into()));
+        let channel_progress_bar = channel_progress_bars.entry(event.channel.id.clone()).or_insert_with(|| {
+            ::std::sync::Arc::new(self.progress_bars.add(ChannelProgressBar::default().into()).into())
+        });
 
         ::tokio::join!(
-            ::futures::stream::iter(event.channel.videos
-                .as_deref()
-                .into_iter()
-                .flatten())
-                .for_each(|videos| async { self.channel_ids_by_video_ids.lock().await.insert(videos.id.clone(), event.channel.id.clone()); })
+            ::futures::stream::iter(event.channel.videos.as_deref().into_iter().flatten())
+                .for_each(|videos| async {
+                    self.channel_ids_by_video_ids
+                        .lock()
+                        .await
+                        .insert(videos.id.clone(), event.channel.id.clone());
+                })
                 .boxed(),
-            ::futures::stream::iter(event.channel.playlists
-                .as_deref()
-                .into_iter()
-                .flatten())
-                .for_each(|playlist| async { self.channel_ids_by_playlist_ids.lock().await.insert(playlist.id.clone(), event.channel.id.clone()); })
+            ::futures::stream::iter(event.channel.playlists.as_deref().into_iter().flatten())
+                .for_each(|playlist| async {
+                    self.channel_ids_by_playlist_ids
+                        .lock()
+                        .await
+                        .insert(playlist.id.clone(), event.channel.id.clone());
+                })
                 .boxed(),
         );
 
@@ -301,8 +327,7 @@ impl Update<DiagnosticEvent> for AggregateView {
             DiagnosticLevel::Error => message.red(),
         };
 
-        let decoy_progress_bar = self.progress_bars
-            .add(::indicatif::ProgressBar::no_length());
+        let decoy_progress_bar = self.progress_bars.add(::indicatif::ProgressBar::no_length());
 
         decoy_progress_bar.set_style(::indicatif::ProgressStyle::with_template("{msg}")?);
         decoy_progress_bar.finish_with_message(format!("{}", message));
@@ -344,23 +369,26 @@ impl Update<VideoDownloadStartedEvent> for VideoProgressBar {
     async fn update(self: ::std::sync::Arc<Self>, event: &VideoDownloadStartedEvent) -> Fallible<()> {
         use ::colored::Colorize as _;
 
-        let title = event.video.metadata.title
+        let title = event
+            .video
+            .metadata
+            .title
             .as_deref()
             .map(|title| title.white().bold())
             .unwrap_or_else(|| "N/A".yellow().bold());
-        
-        let (downloaded_bytes, speed, eta) = (FormattedUninitBytes, FormattedUninitBytesPerSecond, FormattedUninitDuration);
+
+        let (downloaded_bytes, speed, eta) =
+            (FormattedUninitBytes, FormattedUninitBytesPerSecond, FormattedUninitDuration);
 
         self.disable_steady_tick();
 
         self.set_length(100);
         self.set_position(0);
 
-        self.set_style(::indicatif::ProgressStyle::with_template("{prefix} {bar:50} {msg}")?
-            .progress_chars("#>-"));
+        self.set_style(::indicatif::ProgressStyle::with_template("{prefix} {bar:50} {msg}")?.progress_chars("#>-"));
         self.set_prefix(format!("[{}]", eta));
         self.set_message(format!("[{} @ {}] {}", downloaded_bytes, speed, title));
-        
+
         Ok(())
     }
 }
@@ -369,14 +397,11 @@ impl Update<VideoDownloadStartedEvent> for VideoProgressBar {
 impl Update<VideoDownloadProgressUpdatedEvent> for VideoProgressBar {
     async fn update(self: ::std::sync::Arc<Self>, event: &VideoDownloadProgressUpdatedEvent) -> Fallible<()> {
         let message = self.message();
-        let title = message
-            .rfind("] ")
-            .map(|idx| &message[idx + 2..])
-            .ok()?;
+        let title = message.rfind("] ").map(|idx| &message[idx + 2..]).ok()?;
 
-        let eta = FormattedDuration(*&event.eta);
-        let downloaded_bytes = FormattedBytes(*&event.downloaded_bytes);
-        let speed = FormattedBytesPerSecond(*&event.bytes_per_second);
+        let eta = FormattedDuration(event.eta);
+        let downloaded_bytes = FormattedBytes(event.downloaded_bytes);
+        let speed = FormattedBytesPerSecond(event.bytes_per_second);
 
         self.set_position(event.percentage);
 
@@ -392,7 +417,10 @@ impl Update<VideoDownloadCompletedEvent> for VideoProgressBar {
     async fn update(self: ::std::sync::Arc<Self>, event: &VideoDownloadCompletedEvent) -> Fallible<()> {
         use ::colored::Colorize as _;
 
-        let title = event.video.metadata.title
+        let title = event
+            .video
+            .metadata
+            .title
             .as_deref()
             .map(|title| title.bold())
             .unwrap_or_else(|| "N/A".bold());
@@ -450,7 +478,10 @@ impl Update<PlaylistDownloadStartedEvent> for PlaylistProgressBar {
     async fn update(self: ::std::sync::Arc<Self>, event: &PlaylistDownloadStartedEvent) -> Fallible<()> {
         use ::colored::Colorize as _;
 
-        let title = event.playlist.metadata.title
+        let title = event
+            .playlist
+            .metadata
+            .title
             .as_deref()
             .map(|title| title.bold())
             .unwrap_or_else(|| "N/A".yellow().bold());
@@ -458,14 +489,13 @@ impl Update<PlaylistDownloadStartedEvent> for PlaylistProgressBar {
         let total_videos = event.playlist.videos.as_deref().map(|videos| videos.len()).unwrap_or_default();
 
         self.disable_steady_tick();
-        
+
         self.set_length(total_videos as u64);
         self.set_position(0);
-        
-        self.set_style(::indicatif::ProgressStyle::with_template("{bar:61} {msg}")?
-            .progress_chars("##-"));
+
+        self.set_style(::indicatif::ProgressStyle::with_template("{bar:61} {msg}")?.progress_chars("##-"));
         self.set_message(format!("[{}/{}] {}", 0, total_videos, title));
-        
+
         Ok(())
     }
 }
@@ -474,10 +504,7 @@ impl Update<PlaylistDownloadStartedEvent> for PlaylistProgressBar {
 impl Update<PlaylistDownloadProgressUpdatedEvent> for PlaylistProgressBar {
     async fn update(self: ::std::sync::Arc<Self>, event: &PlaylistDownloadProgressUpdatedEvent) -> Fallible<()> {
         let message = self.message();
-        let title = message
-            .rfind("] ")
-            .map(|idx| &message[idx + 2..])
-            .ok()?;
+        let title = message.rfind("] ").map(|idx| &message[idx + 2..]).ok()?;
 
         self.set_length(event.total_videos);
         self.set_position(event.completed_videos);
@@ -493,7 +520,10 @@ impl Update<PlaylistDownloadCompletedEvent> for PlaylistProgressBar {
     async fn update(self: ::std::sync::Arc<Self>, event: &PlaylistDownloadCompletedEvent) -> Fallible<()> {
         use ::colored::Colorize as _;
 
-        let title = event.playlist.metadata.title
+        let title = event
+            .playlist
+            .metadata
+            .title
             .as_deref()
             .map(|title| title.bold())
             .unwrap_or_else(|| "N/A".bold());
@@ -549,23 +579,30 @@ impl Update<ChannelDownloadStartedEvent> for ChannelProgressBar {
     async fn update(self: ::std::sync::Arc<Self>, event: &ChannelDownloadStartedEvent) -> Fallible<()> {
         use ::colored::Colorize as _;
 
-        let title = event.channel.metadata.title
+        let title = event
+            .channel
+            .metadata
+            .title
             .as_deref()
             .map(|title| title.bold())
             .unwrap_or_else(|| "N/A".yellow().bold());
 
         let total_videos = event.channel.videos.as_deref().map(|videos| videos.len()).unwrap_or_default();
-        let total_playlists = event.channel.playlists.as_deref().map(|playlists| playlists.len()).unwrap_or_default();
+        let total_playlists = event
+            .channel
+            .playlists
+            .as_deref()
+            .map(|playlists| playlists.len())
+            .unwrap_or_default();
 
         self.disable_steady_tick();
-        
+
         self.set_length((total_videos + total_playlists) as u64);
         self.set_position(0);
-        
-        self.set_style(::indicatif::ProgressStyle::with_template("{bar:61} {msg}")?
-            .progress_chars("##-"));
+
+        self.set_style(::indicatif::ProgressStyle::with_template("{bar:61} {msg}")?.progress_chars("##-"));
         self.set_message(format!("[{}/{} | {}/{}] {}", 0, total_videos, 0, total_playlists, title));
-        
+
         Ok(())
     }
 }
@@ -574,15 +611,15 @@ impl Update<ChannelDownloadStartedEvent> for ChannelProgressBar {
 impl Update<ChannelDownloadProgressUpdatedEvent> for ChannelProgressBar {
     async fn update(self: ::std::sync::Arc<Self>, event: &ChannelDownloadProgressUpdatedEvent) -> Fallible<()> {
         let message = self.message();
-        let title = message
-            .rfind("] ")
-            .map(|idx| &message[idx + 2..])
-            .ok()?;
+        let title = message.rfind("] ").map(|idx| &message[idx + 2..]).ok()?;
 
         self.set_length(event.total_videos + event.total_playlists);
         self.set_position(event.completed_videos + event.completed_playlists);
 
-        self.set_message(format!("[{}/{} | {}/{}] {}", event.completed_videos, event.total_videos, event.completed_playlists, event.total_playlists, title));
+        self.set_message(format!(
+            "[{}/{} | {}/{}] {}",
+            event.completed_videos, event.total_videos, event.completed_playlists, event.total_playlists, title
+        ));
 
         Ok(())
     }
@@ -593,7 +630,10 @@ impl Update<ChannelDownloadCompletedEvent> for ChannelProgressBar {
     async fn update(self: ::std::sync::Arc<Self>, event: &ChannelDownloadCompletedEvent) -> Fallible<()> {
         use ::colored::Colorize as _;
 
-        let title = event.channel.metadata.title
+        let title = event
+            .channel
+            .metadata
+            .title
             .as_deref()
             .map(|title| title.bold())
             .unwrap_or_else(|| "N/A".bold());
@@ -642,16 +682,16 @@ where
 // }
 
 // impl ::std::fmt::Display for FormattedPercentage {
-//     fn fmt(&self, formatter: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
-//         write!(formatter, "{:>3}%", self.0)
+//     fn fmt(&self, formatter: &mut ::std::fmt::Formatter<'_>) ->
+// ::std::fmt::Result {         write!(formatter, "{:>3}%", self.0)
 //     }
 // }
 
 // struct FormattedUninitPercentage;
 
 // impl ::std::fmt::Display for FormattedUninitPercentage {
-//     fn fmt(&self, formatter: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
-//         write!(formatter, "{:>3}%", "??")
+//     fn fmt(&self, formatter: &mut ::std::fmt::Formatter<'_>) ->
+// ::std::fmt::Result {         write!(formatter, "{:>3}%", "??")
 //     }
 // }
 
