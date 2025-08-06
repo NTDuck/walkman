@@ -1,16 +1,27 @@
 use ::async_trait::async_trait;
-use ::derive_new::new;
-use ::domain::PlaylistMetadata;
-use ::domain::VideoMetadata;
+use ::domain::ChannelUrl;
+use ::domain::PlaylistUrl;
+use ::domain::VideoUrl;
+use ::futures::prelude::*;
 use ::std::ops::Not;
+use ::use_cases::gateways::ChannelDownloader;
 use ::use_cases::gateways::PlaylistDownloader;
 use ::use_cases::gateways::VideoDownloader;
+use ::use_cases::models::descriptors::ChannelMetadata;
+use ::use_cases::models::descriptors::PartiallyResolvedChannel;
 use ::use_cases::models::descriptors::PartiallyResolvedPlaylist;
 use ::use_cases::models::descriptors::PartiallyResolvedVideo;
+use ::use_cases::models::descriptors::PlaylistMetadata;
+use ::use_cases::models::descriptors::ResolvedChannel;
 use ::use_cases::models::descriptors::ResolvedPlaylist;
 use ::use_cases::models::descriptors::ResolvedVideo;
 use ::use_cases::models::descriptors::UnresolvedPlaylist;
 use ::use_cases::models::descriptors::UnresolvedVideo;
+use ::use_cases::models::descriptors::VideoMetadata;
+use ::use_cases::models::events::ChannelDownloadCompletedEvent;
+use ::use_cases::models::events::ChannelDownloadEvent;
+use ::use_cases::models::events::ChannelDownloadProgressUpdatedEvent;
+use ::use_cases::models::events::ChannelDownloadStartedEvent;
 use ::use_cases::models::events::DiagnosticEvent;
 use ::use_cases::models::events::DiagnosticLevel;
 use ::use_cases::models::events::PlaylistDownloadCompletedEvent;
@@ -29,69 +40,71 @@ use crate::utils::aliases::MaybeOwnedString;
 use crate::utils::aliases::MaybeOwnedVec;
 use crate::utils::extensions::OptionExt;
 
-#[derive(new)]
+#[derive(::bon::Builder)]
+#[builder(on(_, into))]
 pub struct YtdlpDownloader {
-    configurations: YtdlpConfigurations,
-}
+    directory: MaybeOwnedPath,
 
-pub struct YtdlpConfigurations {
-    pub directory: MaybeOwnedPath,
-    pub workers: u64,
-    pub per_worker_cooldown: ::std::time::Duration,
+    #[allow(dead_code)]
+    workers: u64,
+
+    per_worker_cooldown: ::std::time::Duration,
+
+    #[builder(skip = ::std::sync::Arc::new(::tokio::sync::Semaphore::new(workers as usize)))]
+    worker_pool: ::std::sync::Arc<::tokio::sync::Semaphore>,
 }
 
 #[async_trait]
 impl VideoDownloader for YtdlpDownloader {
     async fn download(
-        self: ::std::sync::Arc<Self>, video: UnresolvedVideo,
+        self: ::std::sync::Arc<Self>, url: VideoUrl,
     ) -> Fallible<(BoxedStream<VideoDownloadEvent>, BoxedStream<DiagnosticEvent>)> {
-        use ::futures::StreamExt as _;
-        use ::futures::TryStreamExt as _;
-
         let (video_download_events_tx, video_download_events_rx) = ::tokio::sync::mpsc::unbounded_channel();
         let (diagnostic_events_tx, diagnostic_events_rx) = ::tokio::sync::mpsc::unbounded_channel();
 
-        #[rustfmt::skip]
-        let (stdout, stderr) = TokioCommandExecutor::execute("yt-dlp", [
-            &*video.url,
-            "--paths", self.configurations.directory.to_str().ok()?,
-            "--format", "bestaudio",
-            "--extract-audio",
-            "--audio-format", "mp3",
-            "--output", "%(title)s.%(ext)s",
-            "--quiet",
-            "--newline",
-            "--abort-on-error",
-            "--no-playlist",
-            "--color", "no_color",
-            "--force-overwrites",
-            "--progress",
-            "--print", "before_dl:[video-started]%(webpage_url)s;%(id)s;%(title)s;%(album)s;%(artist)s;%(genre)s",
-            "--progress-template", "[video-downloading]%(info.id)s;%(progress.eta)s;%(progress.elapsed)s;%(progress.downloaded_bytes)s;%(progress.total_bytes)s;%(progress.speed)s",
-            "--print", "after_move:[video-completed]%(webpage_url)s;%(id)s;%(title)s;%(album)s;%(artist)s;%(genre)s;%(filepath)s",
-        ])?;
+        ::tokio::spawn(async move {
+            #[rustfmt::skip]
+            let (stdout, stderr) = TokioCommandExecutor::execute("yt-dlp", [
+                &*url,
+                "--quiet",
+                "--color", "no_color",
+                "--paths", self.directory.to_str().ok()?,
+                "--no-playlist",
+                "--format", "bestaudio",
+                "--extract-audio",
+                "--audio-format", "mp3",
+                "--output", "%(title)+U.%(ext)s",
+                "--newline",
+                "--restrict-filenames",
+                "--windows-filenames",
+                "--abort-on-error",
+                "--force-overwrites",
+                "--progress",
+                "--print", "before_dl:[video-started]%(id)s;%(webpage_url)s;%(title)+U;%(album)s;%(artist)s;%(genre)s",
+                "--progress-template", "[video-downloading]%(info.id)s;%(progress.eta)s;%(progress.elapsed)s;%(progress.downloaded_bytes)s;%(progress.total_bytes)s;%(progress.speed)s",
+                "--print", "after_move:[video-completed]%(id)s;%(webpage_url)s;%(title)+U;%(album)s;%(artist)s;%(genre)s;%(filepath)+U",
+            ])?;
 
-        ::tokio::spawn({
-            async move {
-                ::tokio::try_join!(
-                    async {
-                        stdout
-                            .filter_map(|line| async { VideoDownloadEvent::from_line(line) })
-                            .map(Ok)
-                            .try_for_each(|event| async { video_download_events_tx.send(event) })
-                            .await
-                            .map_err(::anyhow::Error::from)
-                    },
-                    async {
-                        stderr
-                            .filter_map(|line| async { DiagnosticEvent::from_line(line) })
-                            .map(Ok)
-                            .try_for_each(|event| async { diagnostic_events_tx.send(event) })
-                            .await
-                            .map_err(::anyhow::Error::from)
-                    },
-                )
-            }
+            ::tokio::try_join!(
+                async {
+                    stdout
+                        .filter_map(|line| async { VideoDownloadEvent::from_line(line) })
+                        .map(Ok)
+                        .try_for_each(|event| async { video_download_events_tx.send(event) })
+                        .await
+                        .map_err(::anyhow::Error::from)
+                },
+                async {
+                    stderr
+                        .filter_map(|line| async { DiagnosticEvent::from_line(line) })
+                        .map(Ok)
+                        .try_for_each(|event| async { diagnostic_events_tx.send(event) })
+                        .await
+                        .map_err(::anyhow::Error::from)
+                },
+            )?;
+
+            Ok::<_, ::anyhow::Error>(())
         });
 
         Ok((
@@ -104,102 +117,81 @@ impl VideoDownloader for YtdlpDownloader {
 #[async_trait]
 impl PlaylistDownloader for YtdlpDownloader {
     async fn download(
-        self: ::std::sync::Arc<Self>, playlist: UnresolvedPlaylist,
-    ) -> Fallible<(BoxedStream<PlaylistDownloadEvent>, BoxedStream<VideoDownloadEvent>, BoxedStream<DiagnosticEvent>)>
+        self: ::std::sync::Arc<Self>, url: PlaylistUrl,
+    ) -> Fallible<(BoxedStream<VideoDownloadEvent>, BoxedStream<PlaylistDownloadEvent>, BoxedStream<DiagnosticEvent>)>
     {
-        use ::futures::StreamExt as _;
-        use ::futures::TryStreamExt as _;
-
-        let (playlist_download_events_tx, playlist_download_events_rx) = ::tokio::sync::mpsc::unbounded_channel();
         let (video_download_events_tx, video_download_events_rx) = ::tokio::sync::mpsc::unbounded_channel();
+        let (playlist_download_events_tx, playlist_download_events_rx) = ::tokio::sync::mpsc::unbounded_channel();
         let (diagnostic_events_tx, diagnostic_events_rx) = ::tokio::sync::mpsc::unbounded_channel();
 
-        #[rustfmt::skip]
-        let (stdout, stderr) = TokioCommandExecutor::execute("yt-dlp", [
-            &*playlist.url,
-            "--paths", self.configurations.directory.to_str().ok()?,
-            "--quiet",
-            "--flat-playlist",
-            "--color", "no_color",
-            "--print", "playlist:[playlist-started:metadata]%(id)s;%(title)s;%(webpage_url)s",
-            "--print", "video:[playlist-started:url]%(url)s"
-        ])?;
+        ::tokio::spawn(async move {
+            #[rustfmt::skip]
+            let (stdout, stderr) = TokioCommandExecutor::execute("yt-dlp", [
+                &*url,
+                "--quiet",
+                "--color", "no_color",
+                "--flat-playlist",
+                "--yes-playlist",
+                "--print", "playlist:[playlist-started:metadata]%(id)s;%(webpage_url)s;%(title)s",
+                "--print", "video:[playlist-started:video]%(id)s;%(url)s"
+            ])?;
 
-        let playlist = ::tokio::spawn({
-            let playlist_download_events_tx = playlist_download_events_tx.clone();
-            let diagnostic_events_tx = diagnostic_events_tx.clone();
+            let (playlist, _) = ::tokio::try_join!(
+                async {
+                    let event = PlaylistDownloadStartedEvent::from_lines(stdout).await.ok()?;
+                    let playlist = event.playlist.clone();
 
-            async move {
-                let (playlist, _) = ::tokio::try_join!(
-                    async {
-                        let event = PlaylistDownloadStartedEvent::from_lines(stdout).await.ok()?;
-                        let playlist = event.playlist.clone();
+                    playlist_download_events_tx.send(PlaylistDownloadEvent::Started(event))?;
 
-                        playlist_download_events_tx.send(PlaylistDownloadEvent::Started(event))?;
+                    Ok(playlist)
+                },
+                async {
+                    stderr
+                        .filter_map(|line| async { DiagnosticEvent::from_line(line) })
+                        .map(Ok)
+                        .try_for_each(|event| async { diagnostic_events_tx.send(event) })
+                        .await
+                        .map_err(::anyhow::Error::from)
+                },
+            )?;
 
-                        Ok(playlist)
-                    },
-                    async {
-                        stderr
-                            .filter_map(|line| async { DiagnosticEvent::from_line(line) })
-                            .map(Ok)
-                            .try_for_each(|event| async { diagnostic_events_tx.send(event) })
-                            .await
-                            .map_err(::anyhow::Error::from)
-                    },
-                )?;
+            let playlist = PartiallyResolvedPlaylistDeduplicator::deduplicate(playlist);
 
-                Ok::<_, ::anyhow::Error>(playlist)
-            }
-        })
-        .await??;
+            ::tracing::debug!("Downloaded playlist `{:?}`", playlist);
 
-        let completed = ::std::sync::Arc::new(::std::sync::atomic::AtomicU64::new(0));
-        let total = playlist.videos.as_deref().map(|videos| videos.len() as u64).unwrap_or_default();
+            let completed_videos = ::std::sync::Arc::new(::std::sync::atomic::AtomicU64::new(0));
+            let total_videos = playlist.videos.as_deref().map(|videos| videos.len() as u64).unwrap_or_default();
 
-        let resolved_videos: ::std::sync::Arc<::tokio::sync::Mutex<Vec<_>>> =
-            ::std::sync::Arc::new(::tokio::sync::Mutex::new(Vec::with_capacity(total as usize)));
+            let videos = ::std::sync::Arc::new(::tokio::sync::Mutex::new(Vec::with_capacity(total_videos as usize)));
 
-        let unresolved_videos: ::std::sync::Arc<::tokio::sync::Mutex<::std::collections::VecDeque<_>>> =
-            ::std::sync::Arc::new(::tokio::sync::Mutex::new(
-                playlist
-                    .videos
-                    .as_deref()
-                    .map(|videos| videos.iter().cloned().collect())
-                    .unwrap_or_default(),
-            ));
+            let videos_completed_notify = ::std::sync::Arc::new(::tokio::sync::Notify::new());
 
-        let queue_emptied_notify = ::std::sync::Arc::new(::tokio::sync::Notify::new());
+            ::tracing::debug!(
+                "Downloaded videos `{:?}` (`{}`/`{}`)",
+                videos,
+                completed_videos.load(::std::sync::atomic::Ordering::Relaxed),
+                total_videos
+            );
 
-        (0..self.configurations.workers).for_each(|_| {
-            ::tokio::spawn({
-                let this = ::std::sync::Arc::clone(&self);
+            playlist.videos.as_deref().into_iter().flatten().cloned().for_each(|video| {
+                ::tokio::spawn({
+                    let this = ::std::sync::Arc::clone(&self);
 
-                let playlist_download_events_tx = playlist_download_events_tx.clone();
-                let video_download_events_tx = video_download_events_tx.clone();
-                let diagnostic_events_tx = diagnostic_events_tx.clone();
+                    let video_download_events_tx = video_download_events_tx.clone();
+                    let playlist_download_events_tx = playlist_download_events_tx.clone();
+                    let diagnostic_events_tx = diagnostic_events_tx.clone();
 
-                let completed = ::std::sync::Arc::clone(&completed);
-                let resolved_videos = ::std::sync::Arc::clone(&resolved_videos);
-                let unresolved_videos = ::std::sync::Arc::clone(&unresolved_videos);
-                let queue_emptied_notify = ::std::sync::Arc::clone(&queue_emptied_notify);
+                    let playlist_id = playlist.id.clone();
 
-                async move {
-                    loop {
-                        let (video, queue_emptied_by_this_worker) = {
-                            let mut unresolved_videos = unresolved_videos.lock().await;
+                    let completed_videos = ::std::sync::Arc::clone(&completed_videos);
+                    let videos = ::std::sync::Arc::clone(&videos);
+                    let videos_completed_notify = ::std::sync::Arc::clone(&videos_completed_notify);
 
-                            let video = unresolved_videos.pop_front();
-                            let queue_emptied_by_this_worker = unresolved_videos.is_empty();
+                    async move {
+                        let worker = this.worker_pool.acquire().await?;
 
-                            (video, queue_emptied_by_this_worker)
-                        };
-
-                        let Some(video) = video else {
-                            break;
-                        };
                         let (video_download_events, diagnostic_events) =
-                            VideoDownloader::download(::std::sync::Arc::clone(&this), video).await?;
+                            VideoDownloader::download(::std::sync::Arc::clone(&this), video.url.clone().into()).await?;
 
                         ::tokio::try_join!(
                             async {
@@ -207,15 +199,16 @@ impl PlaylistDownloader for YtdlpDownloader {
                                     .map(Ok)
                                     .try_for_each(|event| async {
                                         if let VideoDownloadEvent::Completed(ref event) = event {
-                                            completed.fetch_add(1, ::std::sync::atomic::Ordering::Relaxed);
-                                            resolved_videos.lock().await.push(event.video.clone());
+                                            completed_videos.fetch_add(1, ::std::sync::atomic::Ordering::Relaxed);
+                                            videos.lock().await.push(event.video.clone());
 
-                                            let event = PlaylistDownloadProgressUpdatedEvent {
-                                                video: event.video.clone(),
-                                                completed_videos: completed
-                                                    .load(::std::sync::atomic::Ordering::Relaxed),
-                                                total_videos: total,
-                                            };
+                                            let event = PlaylistDownloadProgressUpdatedEvent::builder()
+                                                .playlist_id(playlist_id.clone())
+                                                .completed_videos(
+                                                    completed_videos.load(::std::sync::atomic::Ordering::Relaxed),
+                                                )
+                                                .total_videos(total_videos)
+                                                .build();
 
                                             playlist_download_events_tx
                                                 .send(PlaylistDownloadEvent::ProgressUpdated(event))?;
@@ -223,7 +216,7 @@ impl PlaylistDownloader for YtdlpDownloader {
 
                                         video_download_events_tx.send(event)?;
 
-                                        Ok::<_, ::anyhow::Error>(())
+                                        Ok(())
                                     })
                                     .await
                             },
@@ -236,76 +229,415 @@ impl PlaylistDownloader for YtdlpDownloader {
                             },
                         )?;
 
-                        if queue_emptied_by_this_worker {
-                            queue_emptied_notify.notify_one();
+                        ::tokio::time::sleep(this.per_worker_cooldown).await;
+                        ::core::mem::drop(worker);
+
+                        ::tracing::debug!(
+                            "Downloaded videos `{:?}` (`{}`/`{}`)",
+                            videos,
+                            completed_videos.load(::std::sync::atomic::Ordering::Relaxed),
+                            total_videos
+                        );
+
+                        if completed_videos.load(::std::sync::atomic::Ordering::Relaxed) == total_videos {
+                            videos_completed_notify.notify_one();
                         }
 
-                        ::tokio::time::sleep(this.configurations.per_worker_cooldown).await;
+                        Fallible::Ok(())
                     }
-
-                    Ok::<_, ::anyhow::Error>(())
-                }
+                });
             });
-        });
 
-        ::tokio::spawn({
-            let playlist_download_events_tx = playlist_download_events_tx.clone();
+            videos_completed_notify.notified().await;
 
-            let queue_emptied_notify = ::std::sync::Arc::clone(&queue_emptied_notify);
+            let videos = ::std::mem::take(&mut *videos.lock().await);
+            let videos = videos.is_empty().not().then_some(videos.into());
 
-            async move {
-                queue_emptied_notify.notified().await;
+            let playlist = ResolvedPlaylist::builder()
+                .id(playlist.id)
+                .url(playlist.url)
+                .metadata(playlist.metadata)
+                .videos(videos)
+                .build();
 
-                let videos = ::std::mem::take(&mut *resolved_videos.lock().await);
-                let videos = videos.is_empty().not().then_some(videos.into());
+            ::tracing::debug!("Downloaded playlist `{:?}`", playlist);
 
-                let playlist = ResolvedPlaylist {
-                    url: playlist.url,
-                    id: playlist.id,
-                    metadata: playlist.metadata,
-                    videos,
-                };
+            let event = PlaylistDownloadCompletedEvent { playlist };
+            playlist_download_events_tx.send(PlaylistDownloadEvent::Completed(event))?;
 
-                let event = PlaylistDownloadCompletedEvent { playlist };
-                playlist_download_events_tx.send(PlaylistDownloadEvent::Completed(event))?;
-
-                Ok::<_, ::anyhow::Error>(())
-            }
+            Ok::<_, ::anyhow::Error>(())
         });
 
         Ok((
-            ::std::boxed::Box::pin(::tokio_stream::wrappers::UnboundedReceiverStream::new(playlist_download_events_rx)),
             ::std::boxed::Box::pin(::tokio_stream::wrappers::UnboundedReceiverStream::new(video_download_events_rx)),
+            ::std::boxed::Box::pin(::tokio_stream::wrappers::UnboundedReceiverStream::new(playlist_download_events_rx)),
+            ::std::boxed::Box::pin(::tokio_stream::wrappers::UnboundedReceiverStream::new(diagnostic_events_rx)),
+        ))
+    }
+}
+
+#[async_trait]
+impl ChannelDownloader for YtdlpDownloader {
+    async fn download(
+        self: ::std::sync::Arc<Self>, url: ChannelUrl,
+    ) -> Fallible<(
+        BoxedStream<VideoDownloadEvent>,
+        BoxedStream<PlaylistDownloadEvent>,
+        BoxedStream<ChannelDownloadEvent>,
+        BoxedStream<DiagnosticEvent>,
+    )> {
+        let (video_download_events_tx, video_download_events_rx) = ::tokio::sync::mpsc::unbounded_channel();
+        let (playlist_download_events_tx, playlist_download_events_rx) = ::tokio::sync::mpsc::unbounded_channel();
+        let (channel_download_events_tx, channel_download_events_rx) = ::tokio::sync::mpsc::unbounded_channel();
+        let (diagnostic_events_tx, diagnostic_events_rx) = ::tokio::sync::mpsc::unbounded_channel();
+
+        ::tokio::spawn(async move {
+            #[rustfmt::skip]
+            let (stdout, stderr) = TokioCommandExecutor::execute_all(&[
+                ("yt-dlp", &[
+                    &format!("{}/videos", &*url) as &str,
+                    "--quiet",
+                    "--color", "no_color",
+                    "--print", "[channel-started:video]%(id)s;%(webpage_url)s;%(channel_id)s;%(channel_url)s;%(channel)s",
+                ]),
+                ("yt-dlp", &[
+                    &format!("{}/playlists", &*url),
+                    "--quiet",
+                    "--color", "no_color",
+                    "--flat-playlist",
+                    "--print", "[channel-started:playlist]%(id)s;%(url)s",
+                ]),
+            ])?;
+
+            let (channel, _) = ::tokio::try_join!(
+                async {
+                    let event = ChannelDownloadStartedEvent::from_lines(stdout).await.ok()?;
+                    let channel = event.channel.clone();
+
+                    channel_download_events_tx.send(ChannelDownloadEvent::Started(event))?;
+
+                    Ok(channel)
+                },
+                async {
+                    stderr
+                        .filter_map(|line| async { DiagnosticEvent::from_line(line) })
+                        .map(Ok)
+                        .try_for_each(|event| async { diagnostic_events_tx.send(event) })
+                        .await
+                        .map_err(::anyhow::Error::from)
+                },
+            )?;
+
+            let channel = PartiallyResolvedChannelDeduplicator::deduplicate(channel);
+
+            ::tracing::debug!("Downloading channel `{:?}`", channel);
+
+            let completed_videos = ::std::sync::Arc::new(::std::sync::atomic::AtomicU64::default());
+            let total_videos = channel.videos.as_deref().map(|videos| videos.len() as u64).unwrap_or_default();
+            let completed_playlists = ::std::sync::Arc::new(::std::sync::atomic::AtomicU64::default());
+            let total_playlists = channel
+                .playlists
+                .as_deref()
+                .map(|playlists| playlists.len() as u64)
+                .unwrap_or_default();
+
+            let videos = ::std::sync::Arc::new(::tokio::sync::Mutex::new(Vec::with_capacity(total_videos as usize)));
+            let playlists =
+                ::std::sync::Arc::new(::tokio::sync::Mutex::new(Vec::with_capacity(total_playlists as usize)));
+
+            let videos_completed_notify = ::std::sync::Arc::new(::tokio::sync::Notify::new());
+            let playlists_completed_notify = ::std::sync::Arc::new(::tokio::sync::Notify::new());
+
+            ::tracing::debug!(
+                "Downloaded videos `{:?}` (`{}`/`{}`)",
+                videos,
+                completed_videos.load(::std::sync::atomic::Ordering::Relaxed),
+                total_videos
+            );
+            ::tracing::debug!(
+                "Downloaded playlists `{:?}` (`{}`/`{}`)",
+                playlists,
+                completed_playlists.load(::std::sync::atomic::Ordering::Relaxed),
+                total_playlists
+            );
+
+            ::tokio::try_join!(
+                async {
+                    channel.videos.as_deref().into_iter().flatten().cloned().for_each(|video| {
+                        ::tokio::spawn({
+                            let this = ::std::sync::Arc::clone(&self);
+
+                            let video_download_events_tx = video_download_events_tx.clone();
+                            let channel_download_events_tx = channel_download_events_tx.clone();
+                            let diagnostic_events_tx = diagnostic_events_tx.clone();
+
+                            let channel_id = channel.id.clone();
+
+                            let completed_videos = ::std::sync::Arc::clone(&completed_videos);
+                            let completed_playlists = ::std::sync::Arc::clone(&completed_playlists);
+
+                            let videos = ::std::sync::Arc::clone(&videos);
+                            let videos_completed_notify = ::std::sync::Arc::clone(&videos_completed_notify);
+
+                            async move {
+                                let worker = this.worker_pool.acquire().await?;
+
+                                let (video_download_events, diagnostic_events) =
+                                    VideoDownloader::download(::std::sync::Arc::clone(&this), video.url.clone().into())
+                                        .await?;
+
+                                ::tokio::try_join!(
+                                    async {
+                                        video_download_events
+                                            .map(Ok)
+                                            .try_for_each(|event| async {
+                                                if let VideoDownloadEvent::Completed(ref event) = event {
+                                                    completed_videos
+                                                        .fetch_add(1, ::std::sync::atomic::Ordering::Relaxed);
+                                                    videos.lock().await.push(event.video.clone());
+
+                                                    let event = ChannelDownloadProgressUpdatedEvent::builder()
+                                                        .channel_id(channel_id.clone())
+                                                        .completed_videos(
+                                                            completed_videos
+                                                                .load(::std::sync::atomic::Ordering::Relaxed),
+                                                        )
+                                                        .total_videos(total_videos)
+                                                        .completed_playlists(
+                                                            completed_playlists
+                                                                .load(::std::sync::atomic::Ordering::Relaxed),
+                                                        )
+                                                        .total_playlists(total_playlists)
+                                                        .build();
+
+                                                    channel_download_events_tx
+                                                        .send(ChannelDownloadEvent::ProgressUpdated(event))?;
+                                                }
+
+                                                video_download_events_tx.send(event)?;
+
+                                                Ok(())
+                                            })
+                                            .await
+                                    },
+                                    async {
+                                        diagnostic_events
+                                            .map(Ok)
+                                            .try_for_each(|event| async { diagnostic_events_tx.send(event) })
+                                            .await
+                                            .map_err(::anyhow::Error::from)
+                                    },
+                                )?;
+
+                                ::tokio::time::sleep(this.per_worker_cooldown).await;
+                                ::core::mem::drop(worker);
+
+                                ::tracing::debug!(
+                                    "Downloaded video `{:?}` (`{}`/`{}`)",
+                                    video,
+                                    completed_videos.load(::std::sync::atomic::Ordering::Relaxed),
+                                    total_videos
+                                );
+
+                                if completed_videos.load(::std::sync::atomic::Ordering::Relaxed) == total_videos {
+                                    videos_completed_notify.notify_one();
+                                }
+
+                                Ok::<_, ::anyhow::Error>(())
+                            }
+                        });
+                    });
+
+                    Ok::<_, ::anyhow::Error>(())
+                },
+                async {
+                    channel
+                        .playlists
+                        .as_deref()
+                        .into_iter()
+                        .flatten()
+                        .cloned()
+                        .for_each(|playlist| {
+                            ::tokio::spawn({
+                                let this = ::std::sync::Arc::clone(&self);
+
+                                let video_download_events_tx = video_download_events_tx.clone();
+                                let playlist_download_events_tx = playlist_download_events_tx.clone();
+                                let channel_download_events_tx = channel_download_events_tx.clone();
+                                let diagnostic_events_tx = diagnostic_events_tx.clone();
+
+                                let channel_id = channel.id.clone();
+
+                                let completed_videos = ::std::sync::Arc::clone(&completed_videos);
+                                let completed_playlists = ::std::sync::Arc::clone(&completed_playlists);
+
+                                let playlists = ::std::sync::Arc::clone(&playlists);
+                                let playlists_completed_notify = ::std::sync::Arc::clone(&playlists_completed_notify);
+
+                                async move {
+                                    let worker = this.worker_pool.acquire().await?;
+
+                                    let (video_download_events, playlist_download_events, diagnostic_events) =
+                                        PlaylistDownloader::download(
+                                            ::std::sync::Arc::clone(&this),
+                                            playlist.url.clone().into(),
+                                        )
+                                        .await?;
+
+                                    ::tokio::try_join!(
+                                        async {
+                                            video_download_events
+                                                .map(Ok)
+                                                .try_for_each(|event| async { video_download_events_tx.send(event) })
+                                                .await
+                                                .map_err(::anyhow::Error::from)
+                                        },
+                                        async {
+                                            playlist_download_events
+                                                .map(Ok)
+                                                .try_for_each(|event| async {
+                                                    if let PlaylistDownloadEvent::Completed(ref event) = event {
+                                                        completed_playlists
+                                                            .fetch_add(1, ::std::sync::atomic::Ordering::Relaxed);
+                                                        playlists.lock().await.push(event.playlist.clone());
+
+                                                        let event = ChannelDownloadProgressUpdatedEvent::builder()
+                                                            .channel_id(channel_id.clone())
+                                                            .completed_videos(
+                                                                completed_videos
+                                                                    .load(::std::sync::atomic::Ordering::Relaxed),
+                                                            )
+                                                            .total_videos(total_videos)
+                                                            .completed_playlists(
+                                                                completed_playlists
+                                                                    .load(::std::sync::atomic::Ordering::Relaxed),
+                                                            )
+                                                            .total_playlists(total_playlists)
+                                                            .build();
+
+                                                        channel_download_events_tx
+                                                            .send(ChannelDownloadEvent::ProgressUpdated(event))?;
+                                                    }
+
+                                                    playlist_download_events_tx.send(event)?;
+
+                                                    Ok(())
+                                                })
+                                                .await
+                                        },
+                                        async {
+                                            diagnostic_events
+                                                .map(Ok)
+                                                .try_for_each(|event| async { diagnostic_events_tx.send(event) })
+                                                .await
+                                                .map_err(::anyhow::Error::from)
+                                        },
+                                    )?;
+
+                                    ::tokio::time::sleep(this.per_worker_cooldown).await;
+                                    ::core::mem::drop(worker);
+
+                                    ::tracing::debug!(
+                                        "Downloaded playlist `{:?}` (`{}`/`{}`)",
+                                        playlist,
+                                        completed_playlists.load(::std::sync::atomic::Ordering::Relaxed),
+                                        total_playlists
+                                    );
+
+                                    if completed_playlists.load(::std::sync::atomic::Ordering::Relaxed)
+                                        == total_playlists
+                                    {
+                                        playlists_completed_notify.notify_one();
+                                    }
+
+                                    Ok::<_, ::anyhow::Error>(())
+                                }
+                            });
+                        });
+
+                    Ok::<_, ::anyhow::Error>(())
+                },
+            )?;
+
+            ::tokio::join!(videos_completed_notify.notified(), playlists_completed_notify.notified(),);
+
+            let videos = ::std::mem::take(&mut *videos.lock().await);
+            let videos = videos.is_empty().not().then_some(videos.into());
+
+            let playlists = ::std::mem::take(&mut *playlists.lock().await);
+            let playlists = playlists.is_empty().not().then_some(playlists.into());
+
+            let channel = ResolvedChannel::builder()
+                .id(channel.id)
+                .url(channel.url)
+                .metadata(channel.metadata)
+                .videos(videos)
+                .playlists(playlists)
+                .build();
+
+            ::tracing::debug!("Downloaded channel `{:?}`", channel);
+
+            let event = ChannelDownloadCompletedEvent { channel };
+            channel_download_events_tx.send(ChannelDownloadEvent::Completed(event))?;
+
+            Ok::<_, ::anyhow::Error>(())
+        });
+
+        Ok((
+            ::std::boxed::Box::pin(::tokio_stream::wrappers::UnboundedReceiverStream::new(video_download_events_rx)),
+            ::std::boxed::Box::pin(::tokio_stream::wrappers::UnboundedReceiverStream::new(playlist_download_events_rx)),
+            ::std::boxed::Box::pin(::tokio_stream::wrappers::UnboundedReceiverStream::new(channel_download_events_rx)),
             ::std::boxed::Box::pin(::tokio_stream::wrappers::UnboundedReceiverStream::new(diagnostic_events_rx)),
         ))
     }
 }
 
 trait CommandExecutor {
-    type Stdout: ::futures::Stream<Item = MaybeOwnedString>;
-    type Stderr: ::futures::Stream<Item = MaybeOwnedString>;
-
-    fn execute<Program, Args>(program: Program, args: Args) -> Fallible<(Self::Stdout, Self::Stderr)>
+    fn execute<Program, Args>(
+        program: Program, args: Args,
+    ) -> Fallible<(BoxedStream<MaybeOwnedString>, BoxedStream<MaybeOwnedString>)>
     where
         Program: AsRef<::std::ffi::OsStr>,
         Args: IntoIterator,
         Args::Item: AsRef<::std::ffi::OsStr>;
+
+    fn execute_all<Program, Arg>(
+        commands: &[(Program, &[Arg])],
+    ) -> Fallible<(BoxedStream<MaybeOwnedString>, BoxedStream<MaybeOwnedString>)>
+    where
+        Program: AsRef<::std::ffi::OsStr>,
+        Arg: AsRef<::std::ffi::OsStr>,
+    {
+        let mut stdouts = Vec::with_capacity(commands.len());
+        let mut stderrs = Vec::with_capacity(commands.len());
+
+        commands
+            .iter()
+            .map(|(program, args)| (program, args.iter()))
+            .filter_map(|(program, args)| Self::execute(program, args).ok())
+            .for_each(|(stdout, stderr)| {
+                stdouts.push(stdout);
+                stderrs.push(stderr);
+            });
+
+        Ok((
+            ::std::boxed::Box::pin(::futures::stream::select_all(stdouts)),
+            ::std::boxed::Box::pin(::futures::stream::select_all(stderrs)),
+        ))
+    }
 }
 
 struct TokioCommandExecutor;
 
 impl CommandExecutor for TokioCommandExecutor {
-    type Stderr = ::tokio_stream::wrappers::UnboundedReceiverStream<MaybeOwnedString>;
-    type Stdout = ::tokio_stream::wrappers::UnboundedReceiverStream<MaybeOwnedString>;
-
-    fn execute<Program, Args>(program: Program, args: Args) -> Fallible<(Self::Stdout, Self::Stderr)>
+    fn execute<Program, Args>(
+        program: Program, args: Args,
+    ) -> Fallible<(BoxedStream<MaybeOwnedString>, BoxedStream<MaybeOwnedString>)>
     where
         Program: AsRef<::std::ffi::OsStr>,
         Args: IntoIterator,
         Args::Item: AsRef<::std::ffi::OsStr>,
     {
-        use ::futures::StreamExt as _;
-        use ::futures::TryStreamExt as _;
         use ::tokio::io::AsyncBufReadExt as _;
 
         let (stdout_tx, stdout_rx) = ::tokio::sync::mpsc::unbounded_channel();
@@ -320,7 +652,7 @@ impl CommandExecutor for TokioCommandExecutor {
         let stdout = process.stdout.take().ok()?;
         let stderr = process.stderr.take().ok()?;
 
-        ::tokio::task::spawn(async move {
+        ::tokio::spawn(async move {
             let lines = ::tokio::io::BufReader::new(stdout).lines();
 
             ::tokio_stream::wrappers::LinesStream::new(lines)
@@ -331,7 +663,7 @@ impl CommandExecutor for TokioCommandExecutor {
                 .await
         });
 
-        ::tokio::task::spawn(async move {
+        ::tokio::spawn(async move {
             let lines = ::tokio::io::BufReader::new(stderr).lines();
 
             ::tokio_stream::wrappers::LinesStream::new(lines)
@@ -343,25 +675,81 @@ impl CommandExecutor for TokioCommandExecutor {
         });
 
         Ok((
-            ::tokio_stream::wrappers::UnboundedReceiverStream::new(stdout_rx),
-            ::tokio_stream::wrappers::UnboundedReceiverStream::new(stderr_rx),
+            ::std::boxed::Box::pin(::tokio_stream::wrappers::UnboundedReceiverStream::new(stdout_rx)),
+            ::std::boxed::Box::pin(::tokio_stream::wrappers::UnboundedReceiverStream::new(stderr_rx)),
         ))
     }
 }
 
-trait FromLine {
+trait Deduplicator<Artifact> {
+    fn deduplicate(artifact: Artifact) -> Artifact;
+}
+
+struct PartiallyResolvedPlaylistDeduplicator;
+
+impl Deduplicator<PartiallyResolvedPlaylist> for PartiallyResolvedPlaylistDeduplicator {
+    fn deduplicate(playlist: PartiallyResolvedPlaylist) -> PartiallyResolvedPlaylist {
+        PartiallyResolvedPlaylist {
+            videos: playlist.videos.map(|videos| {
+                videos
+                    .iter()
+                    .cloned()
+                    .map(|video| (video.id.clone(), video))
+                    .collect::<::indexmap::IndexMap<_, _>>()
+                    .into_values()
+                    .collect::<Vec<_>>()
+                    .into()
+            }),
+            ..playlist
+        }
+    }
+}
+
+struct PartiallyResolvedChannelDeduplicator;
+
+impl Deduplicator<PartiallyResolvedChannel> for PartiallyResolvedChannelDeduplicator {
+    fn deduplicate(channel: PartiallyResolvedChannel) -> PartiallyResolvedChannel {
+        PartiallyResolvedChannel {
+            videos: channel.videos.map(|videos| {
+                videos
+                    .iter()
+                    .cloned()
+                    .map(|video| (video.id.clone(), video))
+                    .collect::<::indexmap::IndexMap<_, _>>()
+                    .into_values()
+                    .collect::<Vec<_>>()
+                    .into()
+            }),
+            playlists: channel.playlists.map(|playlists| {
+                playlists
+                    .iter()
+                    .cloned()
+                    .map(|playlist| (playlist.id.clone(), playlist))
+                    .collect::<::indexmap::IndexMap<_, _>>()
+                    .into_values()
+                    .collect::<Vec<_>>()
+                    .into()
+            }),
+            ..channel
+        }
+    }
+}
+
+trait FromYtdlpLine: ::core::marker::Send + ::core::marker::Sync {
     fn from_line<Line>(line: Line) -> Option<Self>
     where
         Line: AsRef<str>,
         Self: Sized;
 }
 
-impl FromLine for VideoDownloadEvent {
+impl FromYtdlpLine for VideoDownloadEvent {
     fn from_line<Line>(line: Line) -> Option<Self>
     where
         Line: AsRef<str>,
         Self: Sized,
     {
+        ::tracing::debug!("Parsing line `{}` as `VideoDownloadEvent`", line.as_ref());
+
         let line = line.as_ref();
 
         VideoDownloadProgressUpdatedEvent::from_line(line)
@@ -371,118 +759,126 @@ impl FromLine for VideoDownloadEvent {
     }
 }
 
-impl FromLine for VideoDownloadStartedEvent {
+impl FromYtdlpLine for VideoDownloadStartedEvent {
     fn from_line<Line>(line: Line) -> Option<Self>
     where
         Line: AsRef<str>,
         Self: Sized,
     {
-        let mut attrs = line.as_ref().strip_prefix("[video-started]")?.split(';');
+        let attrs = line.as_ref().strip_prefix("[video-started]")?.split(';');
+        let [id, url, title, album, artists, genres] = YtdlpAttributes::parse(attrs)?.into();
 
-        let url = parse_attr(attrs.next()?)?;
-        let id = parse_attr(attrs.next()?)?;
-        let title = parse_attr(attrs.next()?);
-        let album = parse_attr(attrs.next()?);
-        let artists = parse_multivalued_attr(attrs.next()?);
-        let genres = parse_multivalued_attr(attrs.next()?);
+        ::tracing::debug!("Parsed line `{}` as `VideoDownloadStartedEvent`", line.as_ref());
 
-        let video = PartiallyResolvedVideo {
-            url,
-            id,
-            metadata: VideoMetadata { title, album, artists, genres },
-        };
-
-        Some(Self { video })
+        Some(
+            Self::builder()
+                .video(
+                    PartiallyResolvedVideo::builder()
+                        .id(id.singlevalued()?)
+                        .url(url.singlevalued()?)
+                        .metadata(
+                            VideoMetadata::builder()
+                                .title(title.singlevalued())
+                                .album(album.singlevalued())
+                                .artists(artists.multivalued())
+                                .genres(genres.multivalued())
+                                .build(),
+                        )
+                        .build(),
+                )
+                .build(),
+        )
     }
 }
 
-impl FromLine for VideoDownloadProgressUpdatedEvent {
+impl FromYtdlpLine for VideoDownloadProgressUpdatedEvent {
     fn from_line<Line>(line: Line) -> Option<Self>
     where
         Line: AsRef<str>,
         Self: Sized,
     {
-        let mut attrs = line.as_ref().strip_prefix("[video-downloading]")?.split(';');
+        let attrs = line.as_ref().strip_prefix("[video-downloading]")?.split(';');
+        let [id, eta, elapsed, downloaded_bytes, total_bytes, bytes_per_second] = YtdlpAttributes::parse(attrs)?.into();
 
-        let id = parse_attr(attrs.next()?)?;
-        let eta = parse_attr(attrs.next()?)?;
-        let elapsed = parse_attr(attrs.next()?)?;
-        let downloaded_bytes = parse_attr(attrs.next()?)?;
-        let total_bytes = parse_attr(attrs.next()?)?;
-        let bytes_per_second = parse_attr(attrs.next()?)?;
+        ::tracing::debug!("Parsed line `{}` as `VideoDownloadProgressUpdatedEvent`", line.as_ref());
 
-        let eta = ::std::time::Duration::from_secs(eta.parse().ok()?);
-        let elapsed = ::std::time::Duration::try_from_secs_f64(elapsed.parse().ok()?).ok()?;
-        let downloaded_bytes = downloaded_bytes.parse().ok()?;
-        let total_bytes = total_bytes.parse().ok()?;
-        let bytes_per_second = bytes_per_second.parse::<f64>().ok()?.floor() as u64;
-
-        Some(Self {
-            id,
-            eta,
-            elapsed,
-            downloaded_bytes,
-            total_bytes,
-            bytes_per_second,
-        })
+        Some(
+            Self::builder()
+                .video_id(id.singlevalued()?)
+                .eta(::std::time::Duration::from_secs(eta.singlevalued()?.parse().ok()?))
+                .elapsed(::std::time::Duration::try_from_secs_f64(elapsed.singlevalued()?.parse().ok()?).ok()?)
+                .downloaded_bytes(downloaded_bytes.singlevalued()?.parse().ok()?)
+                .total_bytes(total_bytes.singlevalued()?.parse().ok()?)
+                .bytes_per_second(bytes_per_second.singlevalued()?.parse::<f64>().ok()?.floor() as u64)
+                .build(),
+        )
     }
 }
 
-impl FromLine for VideoDownloadCompletedEvent {
+impl FromYtdlpLine for VideoDownloadCompletedEvent {
     fn from_line<Line>(line: Line) -> Option<Self>
     where
         Line: AsRef<str>,
         Self: Sized,
     {
-        let mut attrs = line.as_ref().strip_prefix("[video-completed]")?.split(';');
+        let attrs = line.as_ref().strip_prefix("[video-completed]")?.split(';');
+        let [id, url, title, album, artists, genres, path] = YtdlpAttributes::parse(attrs)?.into();
 
-        let url = parse_attr(attrs.next()?)?;
-        let id = parse_attr(attrs.next()?)?;
-        let title = parse_attr(attrs.next()?);
-        let album = parse_attr(attrs.next()?);
-        let artists = parse_multivalued_attr(attrs.next()?);
-        let genres = parse_multivalued_attr(attrs.next()?);
-        let path = parse_attr(attrs.next()?)?;
+        ::tracing::debug!("Parsed line `{}` as `VideoDownloadCompletedEvent`", line.as_ref());
 
-        let path = match path {
-            MaybeOwnedString::Borrowed(path) => MaybeOwnedPath::Borrowed(path.as_ref()),
-            MaybeOwnedString::Owned(path) => MaybeOwnedPath::Owned(path.into()),
-        };
-
-        let video = ResolvedVideo {
-            url,
-            id,
-            metadata: VideoMetadata { title, album, artists, genres },
-            path,
-        };
-
-        Some(Self { video })
+        Some(
+            Self::builder()
+                .video(
+                    ResolvedVideo::builder()
+                        .id(id.singlevalued()?)
+                        .url(url.singlevalued()?)
+                        .metadata(
+                            VideoMetadata::builder()
+                                .title(title.singlevalued())
+                                .album(album.singlevalued())
+                                .artists(artists.multivalued())
+                                .genres(genres.multivalued())
+                                .build(),
+                        )
+                        .path(match path.singlevalued()? {
+                            MaybeOwnedString::Borrowed(path) => MaybeOwnedPath::Borrowed(path.as_ref()),
+                            MaybeOwnedString::Owned(path) => MaybeOwnedPath::Owned(path.into()),
+                        })
+                        .build(),
+                )
+                .build(),
+        )
     }
 }
 
-impl FromLine for DiagnosticEvent {
+impl FromYtdlpLine for DiagnosticEvent {
     fn from_line<Line>(line: Line) -> Option<Self>
     where
         Line: AsRef<str>,
         Self: Sized,
     {
-        let mut attrs = line.as_ref().split(':');
+        ::tracing::debug!("Parsing line `{}` as `DiagnosticEvent`", line.as_ref());
 
-        let level = parse_attr(attrs.next()?)?;
-        let message = parse_attr(attrs.next()?)?;
+        let attrs = line.as_ref().splitn(2, ':');
+        let [level, message] = YtdlpAttributes::parse(attrs)?.into();
 
-        let level = match level.as_ref() {
-            "WARNING" => DiagnosticLevel::Warning,
-            "ERROR" => DiagnosticLevel::Error,
-            _ => return None,
-        };
+        ::tracing::debug!("Parsed line `{}` as `DiagnosticEvent`", line.as_ref());
 
-        Some(Self { level, message })
+        Some(
+            Self::builder()
+                .level(match level.singlevalued()?.as_ref() {
+                    "WARNING" => DiagnosticLevel::Warning,
+                    "ERROR" => DiagnosticLevel::Error,
+                    _ => return None,
+                })
+                .message(message.singlevalued()?)
+                .build(),
+        )
     }
 }
 
 #[async_trait]
-trait FromLines: Send + Sync {
+trait FromYtdlpLines: ::core::marker::Send + ::core::marker::Sync {
     async fn from_lines<Lines, Line>(lines: Lines) -> Option<Self>
     where
         Lines: ::futures::Stream<Item = Line> + ::core::marker::Send,
@@ -491,70 +887,148 @@ trait FromLines: Send + Sync {
 }
 
 #[async_trait]
-impl FromLines for PlaylistDownloadStartedEvent {
+impl FromYtdlpLines for PlaylistDownloadStartedEvent {
     async fn from_lines<Lines, Line>(lines: Lines) -> Option<Self>
     where
         Lines: ::futures::Stream<Item = Line> + ::core::marker::Send,
         Line: AsRef<str>,
         Self: Sized,
     {
-        use ::futures::StreamExt as _;
-
+        let (mut playlist_id, mut playlist_url, mut playlist_title) = (None, None, None);
         let mut videos = Vec::new();
 
         ::futures::pin_mut!(lines);
 
         while let Some(line) = lines.next().await {
-            if let Some(line) = line.as_ref().strip_prefix("[playlist-started:url]") {
-                let mut attrs = line.split(';');
+            ::tracing::debug!("Parsing line `{}` as `PlaylistDownloadStartedEvent`", line.as_ref());
 
-                let url = parse_attr(attrs.next()?)?;
+            if let Some(line) = line.as_ref().strip_prefix("[playlist-started:video]") {
+                let attrs = line.split(';');
+                let [id, url] = YtdlpAttributes::parse(attrs)?.into();
 
-                let video = UnresolvedVideo { url };
+                let video = UnresolvedVideo::builder()
+                    .id(id.singlevalued()?)
+                    .url(url.singlevalued()?)
+                    .build();
+
                 videos.push(video);
             } else if let Some(line) = line.as_ref().strip_prefix("[playlist-started:metadata]") {
-                let mut attrs = line.split(';');
+                let attrs = line.split(';');
+                let [id, url, title] = YtdlpAttributes::parse(attrs)?.into();
 
-                let id = parse_attr(attrs.next()?)?;
-                let title = parse_attr(attrs.next()?);
-                let url = parse_attr(attrs.next()?)?;
-
-                let videos = videos.is_empty().not().then(|| videos.into());
-
-                let playlist = PartiallyResolvedPlaylist {
-                    url,
-                    id,
-                    metadata: PlaylistMetadata { title },
-                    videos,
-                };
-
-                return Some(Self { playlist });
+                playlist_id = id.singlevalued();
+                playlist_url = url.singlevalued();
+                playlist_title = title.singlevalued();
             }
         }
 
-        None
+        let playlist = PartiallyResolvedPlaylist::builder()
+            .id(playlist_id?)
+            .url(playlist_url?)
+            .metadata(PlaylistMetadata::builder().title(playlist_title).build())
+            .videos(videos.is_empty().not().then(|| videos.into()))
+            .build();
+
+        Some(Self { playlist })
     }
 }
 
-/// TODO: Try making borrowing works
-fn parse_multivalued_attr(string: &str) -> Option<MaybeOwnedVec<MaybeOwnedString>> {
-    let attr = parse_attr(string)?;
+#[async_trait]
+impl FromYtdlpLines for ChannelDownloadStartedEvent {
+    async fn from_lines<Lines, Line>(lines: Lines) -> Option<Self>
+    where
+        Lines: ::futures::Stream<Item = Line> + ::core::marker::Send,
+        Line: AsRef<str>,
+        Self: Sized,
+    {
+        let (mut channel_id, mut channel_url, mut channel_title) = (None, None, None);
+        let mut videos = Vec::new();
+        let mut playlists = Vec::new();
 
-    let attrs = attr.split(',').filter_map(parse_attr).collect::<Vec<_>>();
+        ::futures::pin_mut!(lines);
 
-    Some(attrs.into())
-}
+        while let Some(line) = lines.next().await {
+            ::tracing::debug!("Parsing line `{}` as `ChannelDownloadStartedEvent`", line.as_ref());
 
-fn parse_attr(string: &str) -> Option<MaybeOwnedString> {
-    let string = normalize(string);
+            if let Some(line) = line.as_ref().strip_prefix("[channel-started:video]") {
+                let attrs = line.split(';');
+                let [video_id, video_url, channel_id_, channel_url_, channel_title_] =
+                    YtdlpAttributes::parse(attrs)?.into();
 
-    if string == "NA" {
-        None
-    } else {
-        Some(string.to_owned().into())
+                let video = UnresolvedVideo::builder()
+                    .id(video_id.singlevalued()?)
+                    .url(video_url.singlevalued()?)
+                    .build();
+
+                videos.push(video);
+
+                channel_id = channel_id_.singlevalued();
+                channel_url = channel_url_.singlevalued();
+                channel_title = channel_title_.singlevalued();
+            } else if let Some(line) = line.as_ref().strip_prefix("[channel-started:playlist]") {
+                let attrs = line.split(';');
+                let [id, url] = YtdlpAttributes::parse(attrs)?.into();
+
+                let playlist = UnresolvedPlaylist::builder()
+                    .id(id.singlevalued()?)
+                    .url(url.singlevalued()?)
+                    .build();
+
+                playlists.push(playlist);
+            }
+        }
+
+        let channel = PartiallyResolvedChannel::builder()
+            .id(channel_id?)
+            .url(channel_url?)
+            .metadata(ChannelMetadata::builder().title(channel_title).build())
+            .videos(videos.is_empty().not().then(|| videos.into()))
+            .playlists(playlists.is_empty().not().then(|| playlists.into()))
+            .build();
+
+        Some(Self { channel })
     }
 }
 
-fn normalize(string: &str) -> &str {
-    string.trim()
+#[derive(Debug, Clone)]
+struct YtdlpAttribute<'a>(&'a str);
+
+impl<'a> YtdlpAttribute<'a> {
+    fn singlevalued(self) -> Option<MaybeOwnedString> {
+        match self.0.trim() {
+            "NA" => None,
+            attr => Some(attr.to_owned().into()),
+        }
+    }
+
+    fn multivalued(self) -> Option<MaybeOwnedVec<MaybeOwnedString>> {
+        let attrs = self
+            .0
+            .split(',')
+            .map(YtdlpAttribute)
+            .filter_map(Self::singlevalued)
+            .collect::<Vec<_>>();
+
+        Some(attrs.into())
+    }
+}
+
+#[derive(Debug, Clone)]
+struct YtdlpAttributes<'a, const N: usize>([YtdlpAttribute<'a>; N]);
+
+impl<'a, const N: usize> From<YtdlpAttributes<'a, N>> for [YtdlpAttribute<'a>; N] {
+    fn from(outer: YtdlpAttributes<'a, N>) -> Self {
+        outer.0
+    }
+}
+
+impl<'a, const N: usize> YtdlpAttributes<'a, N> {
+    fn parse<Attrs>(attrs: Attrs) -> Option<Self>
+    where
+        Attrs: Iterator<Item = &'a str>,
+    {
+        let attrs = attrs.map(YtdlpAttribute).collect::<Vec<_>>().try_into().ok()?;
+
+        Some(Self(attrs))
+    }
 }

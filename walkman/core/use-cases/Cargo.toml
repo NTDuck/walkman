@@ -11,8 +11,9 @@ domain = { path = "../domain" }
 
 anyhow = { workspace = true }
 async-trait = { workspace = true }
-derive-new = { workspace = true }
+bon = { workspace = true }
 futures = { workspace = true }
+tracing = { workspace = true }
 tokio = { workspace = true, features = ["macros", "rt"] }
 tokio-stream = { workspace = true }
 
