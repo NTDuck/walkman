@@ -136,7 +136,9 @@ impl Id3MetadataWriter {
             tag.set_genre(genres.join(", "))
         }
 
-        tag.write_to_path(&video.path, ::id3::Version::Id3v23)?;
+        tag.write_to_path(&video.path, ::id3::Version::Id3v23)
+            .map_err(|err| {::tracing::error!("Failed to write ID3 metadata to `{:?}`: {}", video.path.as_os_str(), err); err})
+            .map_err(::anyhow::Error::from)?;
 
         Ok(())
     }

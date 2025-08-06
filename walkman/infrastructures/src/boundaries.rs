@@ -479,6 +479,7 @@ impl Update<PlaylistDownloadProgressUpdatedEvent> for PlaylistProgressBar {
             .map(|idx| &message[idx + 2..])
             .ok()?;
 
+        self.set_length(event.total_videos);
         self.set_position(event.completed_videos);
 
         self.set_message(format!("[{}/{}] {}", event.completed_videos, event.total_videos, title));
@@ -578,6 +579,7 @@ impl Update<ChannelDownloadProgressUpdatedEvent> for ChannelProgressBar {
             .map(|idx| &message[idx + 2..])
             .ok()?;
 
+        self.set_length(event.total_videos + event.total_playlists);
         self.set_position(event.completed_videos + event.completed_playlists);
 
         self.set_message(format!("[{}/{} | {}/{}] {}", event.completed_videos, event.total_videos, event.completed_playlists, event.total_playlists, title));
