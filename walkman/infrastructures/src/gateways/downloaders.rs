@@ -73,7 +73,7 @@ impl VideoDownloader for YtdlpDownloader {
                 "--format", "bestaudio",
                 "--extract-audio",
                 "--audio-format", "mp3",
-                "--output", "%(title)+U.%(ext).s",
+                "--output", "%(title)+U.%(ext)s",
                 "--newline",
                 "--restrict-filenames",
                 "--windows-filenames",
@@ -910,14 +910,6 @@ impl FromYtdlpLines for ChannelDownloadStartedEvent {
                 playlists.push(playlist);
 
             }
-            // else if let Some(line) = line.as_ref().strip_prefix("[channel-started:metadata]") {
-            //     let attrs = line.split(';');
-            //     let [_id, _url, _title] = YtdlpAttributes::parse(attrs)?.into();
-
-            //     id = _id.singlevalued();
-            //     url = _url.singlevalued();
-            //     title = _title.singlevalued();
-            // }
         }
 
         let channel = PartiallyResolvedChannel::builder()
