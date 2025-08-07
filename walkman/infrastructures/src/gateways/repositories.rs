@@ -161,3 +161,66 @@ impl Get<BoxedStream<ChannelUrl>> for FilesystemResourcesRepository {
         }
     }
 }
+
+#[derive(::bon::Builder)]
+#[builder(on(_, into), finish_fn(name = _build, vis = "pub(self)"))]
+pub struct EncryptedFilesystemResourcesRepository {
+    #[builder(field = unreachable!())]
+    video_urls_file: ::tokio::sync::RwLock<::tokio::fs::File>,
+
+    #[builder(field = unreachable!())]
+    playlist_urls_file: ::tokio::sync::RwLock<::tokio::fs::File>,
+
+    #[builder(field = unreachable!())]
+    channel_urls_file: ::tokio::sync::RwLock<::tokio::fs::File>,
+
+    #[builder(getter(vis = "pub(self)"))]
+    video_urls_path: MaybeOwnedPath,
+
+    #[builder(getter(vis = "pub(self)"))]
+    playlist_urls_path: MaybeOwnedPath,
+
+    #[builder(getter(vis = "pub(self)"))]
+    channel_urls_path: MaybeOwnedPath,
+}
+
+impl<State> EncryptedFilesystemResourcesRepositoryBuilder<State>
+where
+    State: encrypted_filesystem_resources_repository_builder::IsComplete,
+{
+    pub async fn build(self) -> Fallible<EncryptedFilesystemResourcesRepository>
+    where
+        State::VideoUrlsPath: encrypted_filesystem_resources_repository_builder::IsSet,
+        State::PlaylistUrlsPath: encrypted_filesystem_resources_repository_builder::IsSet,
+        State::ChannelUrlsPath: encrypted_filesystem_resources_repository_builder::IsSet,
+    {
+        let video_urls_file = ::tokio::fs::OpenOptions::new()
+            .read(true)
+            .write(true)
+            .create(true)
+            .open(self.get_video_urls_path())
+            .await?;
+
+        let playlist_urls_file = ::tokio::fs::OpenOptions::new()
+            .read(true)
+            .write(true)
+            .create(true)
+            .open(self.get_playlist_urls_path())
+            .await?;
+
+        let channel_urls_file = ::tokio::fs::OpenOptions::new()
+            .read(true)
+            .write(true)
+            .create(true)
+            .open(self.get_channel_urls_path())
+            .await?;
+
+        let mut this = self._build();
+
+        this.video_urls_file = ::tokio::sync::RwLock::new(video_urls_file);
+        this.playlist_urls_file = ::tokio::sync::RwLock::new(playlist_urls_file);
+        this.channel_urls_file = ::tokio::sync::RwLock::new(channel_urls_file);
+        
+        Ok(this)
+    }
+}
