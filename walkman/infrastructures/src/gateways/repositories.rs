@@ -164,7 +164,7 @@ impl Get<BoxedStream<ChannelUrl>> for FilesystemResourcesRepository {
 
 #[derive(::bon::Builder)]
 #[builder(on(_, into), finish_fn(name = _build, vis = "pub(self)"))]
-pub struct EncryptedFilesystemResourcesRepository {
+pub struct CompressedSerializedFilesystemResourcesRepository {
     #[builder(field = unreachable!())]
     video_urls_file: ::tokio::sync::RwLock<::tokio::fs::File>,
 
@@ -184,15 +184,15 @@ pub struct EncryptedFilesystemResourcesRepository {
     channel_urls_path: MaybeOwnedPath,
 }
 
-impl<State> EncryptedFilesystemResourcesRepositoryBuilder<State>
+impl<State> CompressedSerializedFilesystemResourcesRepositoryBuilder<State>
 where
-    State: encrypted_filesystem_resources_repository_builder::IsComplete,
+    State: compressed_serialized_filesystem_resources_repository_builder::IsComplete,
 {
-    pub async fn build(self) -> Fallible<EncryptedFilesystemResourcesRepository>
+    pub async fn build(self) -> Fallible<CompressedSerializedFilesystemResourcesRepository>
     where
-        State::VideoUrlsPath: encrypted_filesystem_resources_repository_builder::IsSet,
-        State::PlaylistUrlsPath: encrypted_filesystem_resources_repository_builder::IsSet,
-        State::ChannelUrlsPath: encrypted_filesystem_resources_repository_builder::IsSet,
+        State::VideoUrlsPath: compressed_serialized_filesystem_resources_repository_builder::IsSet,
+        State::PlaylistUrlsPath: compressed_serialized_filesystem_resources_repository_builder::IsSet,
+        State::ChannelUrlsPath: compressed_serialized_filesystem_resources_repository_builder::IsSet,
     {
         let video_urls_file = ::tokio::fs::OpenOptions::new()
             .read(true)
