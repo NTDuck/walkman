@@ -1,3 +1,6 @@
+use std::io::Read;
+use std::io::Write;
+
 use ::async_trait::async_trait;
 use ::domain::ChannelUrl;
 use ::domain::PlaylistUrl;
@@ -164,15 +167,18 @@ impl Get<BoxedStream<ChannelUrl>> for FilesystemResourcesRepository {
 
 #[derive(::bon::Builder)]
 #[builder(on(_, into), finish_fn(name = _build, vis = "pub(self)"))]
-pub struct CompressedSerializedFilesystemResourcesRepository {
+pub struct CompressedSerializedFilesystemResourcesRepository<State = ::std::hash::RandomState> {
     #[builder(field = unreachable!())]
-    video_urls_file: ::tokio::sync::RwLock<::tokio::fs::File>,
+    video_urls_file: ::tokio::sync::Mutex<::tokio::fs::File>,
 
     #[builder(field = unreachable!())]
-    playlist_urls_file: ::tokio::sync::RwLock<::tokio::fs::File>,
+    playlist_urls_file: ::tokio::sync::Mutex<::tokio::fs::File>,
 
     #[builder(field = unreachable!())]
-    channel_urls_file: ::tokio::sync::RwLock<::tokio::fs::File>,
+    channel_urls_file: ::tokio::sync::Mutex<::tokio::fs::File>,
+
+    serializer: ::std::sync::Arc<dyn Serializer<::std::collections::HashSet<MaybeOwnedString, State>>>,
+    compressor: ::std::sync::Arc<dyn Compressor>,
 
     #[builder(getter(vis = "pub(self)"))]
     video_urls_path: MaybeOwnedPath,
@@ -184,15 +190,17 @@ pub struct CompressedSerializedFilesystemResourcesRepository {
     channel_urls_path: MaybeOwnedPath,
 }
 
-impl<State> CompressedSerializedFilesystemResourcesRepositoryBuilder<State>
+impl<State, BuilderState> CompressedSerializedFilesystemResourcesRepositoryBuilder<State, BuilderState>
 where
-    State: compressed_serialized_filesystem_resources_repository_builder::IsComplete,
+    BuilderState: compressed_serialized_filesystem_resources_repository_builder::IsComplete,
 {
-    pub async fn build(self) -> Fallible<CompressedSerializedFilesystemResourcesRepository>
+    pub async fn build(self) -> Fallible<CompressedSerializedFilesystemResourcesRepository<State>>
     where
-        State::VideoUrlsPath: compressed_serialized_filesystem_resources_repository_builder::IsSet,
-        State::PlaylistUrlsPath: compressed_serialized_filesystem_resources_repository_builder::IsSet,
-        State::ChannelUrlsPath: compressed_serialized_filesystem_resources_repository_builder::IsSet,
+        BuilderState::Serializer: compressed_serialized_filesystem_resources_repository_builder::IsSet,
+        BuilderState::Compressor: compressed_serialized_filesystem_resources_repository_builder::IsSet,
+        BuilderState::VideoUrlsPath: compressed_serialized_filesystem_resources_repository_builder::IsSet,
+        BuilderState::PlaylistUrlsPath: compressed_serialized_filesystem_resources_repository_builder::IsSet,
+        BuilderState::ChannelUrlsPath: compressed_serialized_filesystem_resources_repository_builder::IsSet,
     {
         let video_urls_file = ::tokio::fs::OpenOptions::new()
             .read(true)
@@ -215,12 +223,80 @@ where
             .open(self.get_channel_urls_path())
             .await?;
 
-        let mut this = self._build();
+        let mut output = self._build();
 
-        this.video_urls_file = ::tokio::sync::RwLock::new(video_urls_file);
-        this.playlist_urls_file = ::tokio::sync::RwLock::new(playlist_urls_file);
-        this.channel_urls_file = ::tokio::sync::RwLock::new(channel_urls_file);
+        output.video_urls_file = ::tokio::sync::Mutex::new(video_urls_file);
+        output.playlist_urls_file = ::tokio::sync::Mutex::new(playlist_urls_file);
+        output.channel_urls_file = ::tokio::sync::Mutex::new(channel_urls_file);
         
-        Ok(this)
+        Ok(output)
+    }
+}
+
+#[async_trait]
+impl Get<::std::collections::HashSet<VideoUrl>> for CompressedSerializedFilesystemResourcesRepository {
+    async fn get(self: ::std::sync::Arc<Self>) -> Fallible<::std::collections::HashSet<VideoUrl>> {
+        todo!()
+    }
+}
+
+type Buffer = Vec<u8>;
+
+pub trait Serializer<Payload>: ::core::marker::Send + ::core::marker::Sync {
+    fn serialize(self: ::std::sync::Arc<Self>, payload: Payload) -> Fallible<Buffer>;
+    fn deserialize(self: ::std::sync::Arc<Self>, buffer: Buffer) -> Fallible<Payload>;
+}
+
+#[derive(::bon::Builder)]
+#[builder(on(_, into))]
+pub struct BincodeSerializer {
+    configurations: ::bincode::config::Configuration,
+}
+
+impl<State> Serializer<::std::collections::HashSet<MaybeOwnedString, State>> for BincodeSerializer
+where
+    State: ::std::hash::BuildHasher + Default,
+{
+    fn serialize(self: ::std::sync::Arc<Self>, payload: ::std::collections::HashSet<MaybeOwnedString, State>) -> Fallible<Buffer> {
+        let mut buffer = vec![];
+
+        ::bincode::encode_into_slice(payload, &mut buffer, self.configurations)?;
+
+        Ok(buffer)
+    }
+
+    fn deserialize(self: ::std::sync::Arc<Self>, buffer: Buffer) -> Fallible<::std::collections::HashSet<MaybeOwnedString, State>> {
+        let (payload, _) = ::bincode::decode_from_slice(&buffer, self.configurations)?;
+
+        Ok(payload)
+    }
+}
+
+pub trait Compressor: ::core::marker::Send + ::core::marker::Sync {
+    fn compress(self: ::std::sync::Arc<Self>, buffer: Buffer) -> Fallible<Buffer>;
+    fn decompress(self: ::std::sync::Arc<Self>, buffer: Buffer) -> Fallible<Buffer>;
+}
+
+#[derive(::bon::Builder)]
+#[builder(on(_, into))]
+pub struct Flate2Compressor {
+    level: ::flate2::Compression,
+}
+
+impl Compressor for Flate2Compressor {
+    fn compress(self: ::std::sync::Arc<Self>, buffer: Buffer) -> Fallible<Buffer> {
+        let mut compressor = ::flate2::write::ZlibEncoder::new(Vec::new(), self.level);
+        compressor.write_all(&buffer)?;
+
+        Ok(compressor.finish()?)
+    }
+
+    fn decompress(self: ::std::sync::Arc<Self>, buffer: Buffer) -> Fallible<Buffer> {
+        let mut decompressor = ::flate2::read::ZlibDecoder::new(&buffer[..]);
+        
+        let mut buffer = Vec::new();
+        decompressor.read_to_end(&mut buffer)?;
+
+        Ok(buffer)
     }
 }
