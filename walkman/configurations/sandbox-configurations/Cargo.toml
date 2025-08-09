@@ -12,6 +12,7 @@ flate2 = "1"
 bincode = { version = "2", features = ["serde"] }
 serde = { version = "1", features = ["derive"] }
 anyhow = "*"
+clap = "*"
 
 [lints]
 workspace = true

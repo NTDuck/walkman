@@ -1,13 +1,8 @@
-use std::io::Read;
-use std::io::Write;
-
 use ::async_trait::async_trait;
 use ::domain::ChannelUrl;
 use ::domain::PlaylistUrl;
 use ::domain::VideoUrl;
 use ::futures::prelude::*;
-use tokio::io::AsyncReadExt;
-use tokio::io::AsyncWriteExt;
 use ::use_cases::gateways::Insert;
 use ::use_cases::gateways::UrlRepository;
 
@@ -233,7 +228,7 @@ where
         output.video_urls_file = ::tokio::sync::Mutex::new(video_urls_file);
         output.playlist_urls_file = ::tokio::sync::Mutex::new(playlist_urls_file);
         output.channel_urls_file = ::tokio::sync::Mutex::new(channel_urls_file);
-        
+
         Ok(output)
     }
 }
@@ -262,15 +257,13 @@ where
     State: ::std::hash::BuildHasher + Default + ::core::marker::Send,
 {
     async fn insert(self: ::std::sync::Arc<Self>, url: VideoUrl) -> Fallible<()> {
+        use ::tokio::io::AsyncWriteExt as _;
         use ::tokio::io::AsyncSeekExt as _;
 
         let mut urls: ::std::collections::HashSet<VideoUrl, State> = ::std::sync::Arc::clone(&self).get().await?;
         urls.insert(url);
 
-        let urls = urls
-            .into_iter()
-            .map(Into::into)
-            .collect();
+        let urls = urls.into_iter().map(Into::into).collect();
 
         let buffer = ::std::sync::Arc::clone(&self.serializer).serialize(urls)?;
         let buffer = ::std::sync::Arc::clone(&self.compressor).compress(buffer)?;
@@ -278,7 +271,7 @@ where
         let mut file = self.video_urls_file.lock().await;
         file.seek(::std::io::SeekFrom::Start(0)).await?;
         file.set_len(0).await?;
-        
+
         file.write_all(&buffer).await?;
         file.flush().await?;
 
@@ -292,15 +285,13 @@ where
     State: ::std::hash::BuildHasher + Default + ::core::marker::Send,
 {
     async fn insert(self: ::std::sync::Arc<Self>, url: PlaylistUrl) -> Fallible<()> {
+        use ::tokio::io::AsyncWriteExt as _;
         use ::tokio::io::AsyncSeekExt as _;
 
         let mut urls: ::std::collections::HashSet<PlaylistUrl, State> = ::std::sync::Arc::clone(&self).get().await?;
         urls.insert(url);
 
-        let urls = urls
-            .into_iter()
-            .map(Into::into)
-            .collect();
+        let urls = urls.into_iter().map(Into::into).collect();
 
         let buffer = ::std::sync::Arc::clone(&self.serializer).serialize(urls)?;
         let buffer = ::std::sync::Arc::clone(&self.compressor).compress(buffer)?;
@@ -308,7 +299,7 @@ where
         let mut file = self.playlist_urls_file.lock().await;
         file.seek(::std::io::SeekFrom::Start(0)).await?;
         file.set_len(0).await?;
-        
+
         file.write_all(&buffer).await?;
         file.flush().await?;
 
@@ -322,15 +313,13 @@ where
     State: ::std::hash::BuildHasher + Default + ::core::marker::Send,
 {
     async fn insert(self: ::std::sync::Arc<Self>, url: ChannelUrl) -> Fallible<()> {
+        use ::tokio::io::AsyncWriteExt as _;
         use ::tokio::io::AsyncSeekExt as _;
 
         let mut urls: ::std::collections::HashSet<ChannelUrl, State> = ::std::sync::Arc::clone(&self).get().await?;
         urls.insert(url);
 
-        let urls = urls
-            .into_iter()
-            .map(Into::into)
-            .collect();
+        let urls = urls.into_iter().map(Into::into).collect();
 
         let buffer = ::std::sync::Arc::clone(&self.serializer).serialize(urls)?;
         let buffer = ::std::sync::Arc::clone(&self.compressor).compress(buffer)?;
@@ -338,7 +327,7 @@ where
         let mut file = self.channel_urls_file.lock().await;
         file.seek(::std::io::SeekFrom::Start(0)).await?;
         file.set_len(0).await?;
-        
+
         file.write_all(&buffer).await?;
         file.flush().await?;
 
@@ -380,11 +369,13 @@ where
 }
 
 #[async_trait]
-impl<State> Get<::std::collections::HashSet<VideoUrl, State>> for CompressedSerializedFilesystemResourcesRepository<State>
+impl<State> Get<::std::collections::HashSet<VideoUrl, State>>
+    for CompressedSerializedFilesystemResourcesRepository<State>
 where
     State: ::std::hash::BuildHasher + Default,
 {
     async fn get(self: ::std::sync::Arc<Self>) -> Fallible<::std::collections::HashSet<VideoUrl, State>> {
+        use ::tokio::io::AsyncReadExt as _;
         use ::tokio::io::AsyncSeekExt as _;
 
         let mut file = self.video_urls_file.lock().await;
@@ -396,21 +387,20 @@ where
         let buffer = ::std::sync::Arc::clone(&self.compressor).decompress(buffer)?;
         let urls = ::std::sync::Arc::clone(&self.serializer).deserialize(buffer)?;
 
-        let urls = urls
-            .into_iter()
-            .map(Into::into)
-            .collect();
+        let urls = urls.into_iter().map(Into::into).collect();
 
         Ok(urls)
     }
 }
 
 #[async_trait]
-impl<State> Get<::std::collections::HashSet<PlaylistUrl, State>> for CompressedSerializedFilesystemResourcesRepository<State>
+impl<State> Get<::std::collections::HashSet<PlaylistUrl, State>>
+    for CompressedSerializedFilesystemResourcesRepository<State>
 where
     State: ::std::hash::BuildHasher + Default,
 {
     async fn get(self: ::std::sync::Arc<Self>) -> Fallible<::std::collections::HashSet<PlaylistUrl, State>> {
+        use ::tokio::io::AsyncReadExt as _;
         use ::tokio::io::AsyncSeekExt as _;
 
         let mut file = self.playlist_urls_file.lock().await;
@@ -422,21 +412,20 @@ where
         let buffer = ::std::sync::Arc::clone(&self.compressor).decompress(buffer)?;
         let urls = ::std::sync::Arc::clone(&self.serializer).deserialize(buffer)?;
 
-        let urls = urls
-            .into_iter()
-            .map(Into::into)
-            .collect();
+        let urls = urls.into_iter().map(Into::into).collect();
 
         Ok(urls)
     }
 }
 
 #[async_trait]
-impl<State> Get<::std::collections::HashSet<ChannelUrl, State>> for CompressedSerializedFilesystemResourcesRepository<State>
+impl<State> Get<::std::collections::HashSet<ChannelUrl, State>>
+    for CompressedSerializedFilesystemResourcesRepository<State>
 where
     State: ::std::hash::BuildHasher + Default,
 {
     async fn get(self: ::std::sync::Arc<Self>) -> Fallible<::std::collections::HashSet<ChannelUrl, State>> {
+        use ::tokio::io::AsyncReadExt as _;
         use ::tokio::io::AsyncSeekExt as _;
 
         let mut file = self.channel_urls_file.lock().await;
@@ -448,10 +437,7 @@ where
         let buffer = ::std::sync::Arc::clone(&self.compressor).decompress(buffer)?;
         let urls = ::std::sync::Arc::clone(&self.serializer).deserialize(buffer)?;
 
-        let urls = urls
-            .into_iter()
-            .map(Into::into)
-            .collect();
+        let urls = urls.into_iter().map(Into::into).collect();
 
         Ok(urls)
     }
@@ -474,13 +460,17 @@ impl<State> Serializer<::std::collections::HashSet<MaybeOwnedString, State>> for
 where
     State: ::std::hash::BuildHasher + Default,
 {
-    fn serialize(self: ::std::sync::Arc<Self>, payload: ::std::collections::HashSet<MaybeOwnedString, State>) -> Fallible<Buffer> {
+    fn serialize(
+        self: ::std::sync::Arc<Self>, payload: ::std::collections::HashSet<MaybeOwnedString, State>,
+    ) -> Fallible<Buffer> {
         let buffer = ::bincode::encode_to_vec(payload, self.configurations)?;
 
         Ok(buffer)
     }
 
-    fn deserialize(self: ::std::sync::Arc<Self>, buffer: Buffer) -> Fallible<::std::collections::HashSet<MaybeOwnedString, State>> {
+    fn deserialize(
+        self: ::std::sync::Arc<Self>, buffer: Buffer,
+    ) -> Fallible<::std::collections::HashSet<MaybeOwnedString, State>> {
         let (payload, _) = ::bincode::decode_from_slice(&buffer, self.configurations)?;
 
         Ok(payload)
@@ -500,6 +490,8 @@ pub struct Flate2Compressor {
 
 impl Compressor for Flate2Compressor {
     fn compress(self: ::std::sync::Arc<Self>, buffer: Buffer) -> Fallible<Buffer> {
+        use ::std::io::Write as _;
+
         let mut compressor = ::flate2::write::ZlibEncoder::new(Vec::new(), self.level);
         compressor.write_all(&buffer)?;
 
@@ -507,8 +499,10 @@ impl Compressor for Flate2Compressor {
     }
 
     fn decompress(self: ::std::sync::Arc<Self>, buffer: Buffer) -> Fallible<Buffer> {
+        use ::std::io::Read as _;
+
         let mut decompressor = ::flate2::read::ZlibDecoder::new(&buffer[..]);
-        
+
         let mut buffer = Vec::new();
         decompressor.read_to_end(&mut buffer)?;
 

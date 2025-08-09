@@ -6,5 +6,5 @@ lint-clippy = "clippy --fix --workspace --all-targets --all-features --allow-dir
 
 [env]
 # https://stackoverflow.com/a/78606410
-CARGO_WORKSPACE_DIR = { value = "", relative = true }
+# CARGO_WORKSPACE_DIR = { value = "", relative = true }
 RUST_LOG = "debug"
