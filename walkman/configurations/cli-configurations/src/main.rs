@@ -88,22 +88,34 @@ async fn main() -> Fallible<()> {
     let matches = command.get_matches();
 
     // Arguments
-    let directory: MaybeOwnedPath = matches.get_one::<::std::path::PathBuf>("directory")
-        .ok()?.to_owned().into();
+    let directory: MaybeOwnedPath = matches.get_one::<::std::path::PathBuf>("directory").ok()?.to_owned().into();
 
-    let video_urls_path: MaybeOwnedPath = matches.get_one::<::std::path::PathBuf>("video-urls-path").cloned()
+    let video_urls_path: MaybeOwnedPath = matches
+        .get_one::<::std::path::PathBuf>("video-urls-path")
+        .cloned()
         .unwrap_or_else(|| directory.join("video-urls.bin"))
-        .to_owned().into();
-    let playlist_urls_path: MaybeOwnedPath = matches.get_one::<::std::path::PathBuf>("playlist-urls-path").cloned()
+        .to_owned()
+        .into();
+    let playlist_urls_path: MaybeOwnedPath = matches
+        .get_one::<::std::path::PathBuf>("playlist-urls-path")
+        .cloned()
         .unwrap_or_else(|| directory.join("playlist-urls.bin"))
-        .to_owned().into();
-    let channel_urls_path: MaybeOwnedPath = matches.get_one::<::std::path::PathBuf>("channel-urls-path").cloned()
+        .to_owned()
+        .into();
+    let channel_urls_path: MaybeOwnedPath = matches
+        .get_one::<::std::path::PathBuf>("channel-urls-path")
+        .cloned()
         .unwrap_or_else(|| directory.join("channel-urls.bin"))
-        .to_owned().into();
+        .to_owned()
+        .into();
 
-    let workers = matches.get_one::<u64>("workers").ok().copied()
+    let workers = matches
+        .get_one::<u64>("workers")
+        .ok()
+        .copied()
         .unwrap_or_else(|_| ::num_cpus::get() as u64);
-    let per_worker_cooldown = matches.get_one::<u64>("per-worker-cooldown")
+    let per_worker_cooldown = matches
+        .get_one::<u64>("per-worker-cooldown")
         .map(|cooldown| ::std::time::Duration::from_millis(*cooldown))
         .ok()?;
 
@@ -123,15 +135,18 @@ async fn main() -> Fallible<()> {
     let view = ::std::sync::Arc::new(AggregateView::builder().build());
 
     // Gateways
-    let serializer = ::std::sync::Arc::new(BincodeSerializer::builder()
-        .configurations(::bincode::config::standard())
-        .build());
-    let compressor = ::std::sync::Arc::new(Flate2Compressor::builder()
-        .level(::flate2::Compression::default())
-        .build());
+    let serializer = ::std::sync::Arc::new(
+        BincodeSerializer::builder()
+            .configurations(::bincode::config::standard())
+            .build(),
+    );
+    let compressor = ::std::sync::Arc::new(Flate2Compressor::builder().level(::flate2::Compression::default()).build());
     let urls = ::std::sync::Arc::new(
         CompressedSerializedFilesystemResourcesRepository::builder()
-            .serializer(::std::sync::Arc::clone(&serializer) as ::std::sync::Arc<dyn Serializer<::std::collections::HashSet<MaybeOwnedString, ::ahash::RandomState>>>)
+            .serializer(::std::sync::Arc::clone(&serializer)
+                as ::std::sync::Arc<
+                    dyn Serializer<::std::collections::HashSet<MaybeOwnedString, ::ahash::RandomState>>,
+                >)
             .compressor(::std::sync::Arc::clone(&compressor) as ::std::sync::Arc<dyn Compressor>)
             .video_urls_path(video_urls_path)
             .playlist_urls_path(playlist_urls_path)
@@ -204,23 +219,17 @@ async fn main() -> Fallible<()> {
     match matches.subcommand() {
         Some(("download-video", matches)) => {
             let url = matches.get_one::<::std::string::String>("url").ok()?.to_owned();
-            let request = DownloadVideoRequestModel::builder()
-                .url(url)
-                .build();
+            let request = DownloadVideoRequestModel::builder().url(url).build();
             download_video_interactor.accept(request).await?;
         },
         Some(("download-playlist", matches)) => {
             let url = matches.get_one::<::std::string::String>("url").ok()?.to_owned();
-            let request = DownloadPlaylistRequestModel::builder()
-                .url(url)
-                .build();
+            let request = DownloadPlaylistRequestModel::builder().url(url).build();
             download_playlist_interactor.accept(request).await?;
         },
         Some(("download-channel", matches)) => {
             let url = matches.get_one::<::std::string::String>("url").ok()?.to_owned();
-            let request = DownloadChannelRequestModel::builder()
-                .url(url)
-                .build();
+            let request = DownloadChannelRequestModel::builder().url(url).build();
             download_channel_interactor.accept(request).await?;
         },
         Some(("update-media", _)) => {

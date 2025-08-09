@@ -206,6 +206,7 @@ where
             .read(true)
             .write(true)
             .create(true)
+            .truncate(true)
             .open(self.get_video_urls_path())
             .await?;
 
@@ -213,6 +214,7 @@ where
             .read(true)
             .write(true)
             .create(true)
+            .truncate(true)
             .open(self.get_playlist_urls_path())
             .await?;
 
@@ -220,6 +222,7 @@ where
             .read(true)
             .write(true)
             .create(true)
+            .truncate(true)
             .open(self.get_channel_urls_path())
             .await?;
 
@@ -257,8 +260,8 @@ where
     State: ::std::hash::BuildHasher + Default + ::core::marker::Send,
 {
     async fn insert(self: ::std::sync::Arc<Self>, url: VideoUrl) -> Fallible<()> {
-        use ::tokio::io::AsyncWriteExt as _;
         use ::tokio::io::AsyncSeekExt as _;
+        use ::tokio::io::AsyncWriteExt as _;
 
         let mut urls: ::std::collections::HashSet<VideoUrl, State> = ::std::sync::Arc::clone(&self).get().await?;
         urls.insert(url);
@@ -285,8 +288,8 @@ where
     State: ::std::hash::BuildHasher + Default + ::core::marker::Send,
 {
     async fn insert(self: ::std::sync::Arc<Self>, url: PlaylistUrl) -> Fallible<()> {
-        use ::tokio::io::AsyncWriteExt as _;
         use ::tokio::io::AsyncSeekExt as _;
+        use ::tokio::io::AsyncWriteExt as _;
 
         let mut urls: ::std::collections::HashSet<PlaylistUrl, State> = ::std::sync::Arc::clone(&self).get().await?;
         urls.insert(url);
@@ -313,8 +316,8 @@ where
     State: ::std::hash::BuildHasher + Default + ::core::marker::Send,
 {
     async fn insert(self: ::std::sync::Arc<Self>, url: ChannelUrl) -> Fallible<()> {
-        use ::tokio::io::AsyncWriteExt as _;
         use ::tokio::io::AsyncSeekExt as _;
+        use ::tokio::io::AsyncWriteExt as _;
 
         let mut urls: ::std::collections::HashSet<ChannelUrl, State> = ::std::sync::Arc::clone(&self).get().await?;
         urls.insert(url);
