@@ -25,6 +25,9 @@ tokio-stream = "0.1.17"
 tracing = "0.1.41"
 rayon = "1.10.0"
 
+# [patch.crates-io]
+# flate2 = "1.1.2"
+
 # Crates that we choose to marry
 # See: https://blessed.rs/crates
 

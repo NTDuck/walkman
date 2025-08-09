@@ -13,9 +13,11 @@ use-cases = { path = "../core/use-cases" }
 anyhow = { workspace = true }
 async-stream = { workspace = true }
 async-trait = { workspace = true }
+bincode = "2.0.1"
 bon = { workspace = true }
 bytesize = "2.0.1"
 colored = "3.0.0"
+flate2 = "1.1.2"
 futures = { workspace = true }
 id3 = "1.16.3"
 indicatif = "0.18.0"

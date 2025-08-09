@@ -80,9 +80,9 @@ impl VideoDownloader for YtdlpDownloader {
                 "--abort-on-error",
                 "--force-overwrites",
                 "--progress",
-                "--print", "before_dl:[video-started]%(id)s;%(webpage_url)s;%(title)+U;%(album)s;%(artist)s;%(genre)s",
+                "--print", "before_dl:[video-started]%(id)s;%(original_url)s;%(title)+U;%(album)s;%(artist)s;%(genre)s",
                 "--progress-template", "[video-downloading]%(info.id)s;%(progress.eta)s;%(progress.elapsed)s;%(progress.downloaded_bytes)s;%(progress.total_bytes)s;%(progress.speed)s",
-                "--print", "after_move:[video-completed]%(id)s;%(webpage_url)s;%(title)+U;%(album)s;%(artist)s;%(genre)s;%(filepath)+U",
+                "--print", "after_move:[video-completed]%(id)s;%(original_url)s;%(title)+U;%(album)s;%(artist)s;%(genre)s;%(filepath)+U",
             ])?;
 
             ::tokio::try_join!(
@@ -132,7 +132,7 @@ impl PlaylistDownloader for YtdlpDownloader {
                 "--color", "no_color",
                 "--flat-playlist",
                 "--yes-playlist",
-                "--print", "playlist:[playlist-started:metadata]%(id)s;%(webpage_url)s;%(title)s",
+                "--print", "playlist:[playlist-started:metadata]%(id)s;%(original_url)s;%(title)s",
                 "--print", "video:[playlist-started:video]%(id)s;%(url)s"
             ])?;
 
