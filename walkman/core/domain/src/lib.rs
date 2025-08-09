@@ -37,7 +37,7 @@ impl From<MaybeOwnedString> for VideoId {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Hash, PartialEq, Eq)]
 pub struct VideoUrl(MaybeOwnedString);
 
 impl ::std::ops::Deref for VideoUrl {
@@ -124,7 +124,7 @@ impl From<MaybeOwnedString> for PlaylistId {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Hash, PartialEq, Eq)]
 pub struct PlaylistUrl(MaybeOwnedString);
 
 impl ::std::ops::Deref for PlaylistUrl {
@@ -186,7 +186,7 @@ impl From<MaybeOwnedString> for ChannelId {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Hash, PartialEq, Eq)]
 pub struct ChannelUrl(MaybeOwnedString);
 
 impl ::std::ops::Deref for ChannelUrl {

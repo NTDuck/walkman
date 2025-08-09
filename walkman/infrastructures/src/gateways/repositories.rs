@@ -6,6 +6,8 @@ use ::domain::ChannelUrl;
 use ::domain::PlaylistUrl;
 use ::domain::VideoUrl;
 use ::futures::prelude::*;
+use tokio::io::AsyncReadExt;
+use tokio::io::AsyncWriteExt;
 use ::use_cases::gateways::Insert;
 use ::use_cases::gateways::UrlRepository;
 
@@ -180,12 +182,15 @@ pub struct CompressedSerializedFilesystemResourcesRepository<State = ::std::hash
     serializer: ::std::sync::Arc<dyn Serializer<::std::collections::HashSet<MaybeOwnedString, State>>>,
     compressor: ::std::sync::Arc<dyn Compressor>,
 
+    #[allow(unused)]
     #[builder(getter(vis = "pub(self)"))]
     video_urls_path: MaybeOwnedPath,
 
+    #[allow(unused)]
     #[builder(getter(vis = "pub(self)"))]
     playlist_urls_path: MaybeOwnedPath,
 
+    #[allow(unused)]
     #[builder(getter(vis = "pub(self)"))]
     channel_urls_path: MaybeOwnedPath,
 }
@@ -234,9 +239,221 @@ where
 }
 
 #[async_trait]
-impl Get<::std::collections::HashSet<VideoUrl>> for CompressedSerializedFilesystemResourcesRepository {
-    async fn get(self: ::std::sync::Arc<Self>) -> Fallible<::std::collections::HashSet<VideoUrl>> {
-        todo!()
+impl<State> UrlRepository for CompressedSerializedFilesystemResourcesRepository<State>
+where
+    State: ::std::hash::BuildHasher + Default + ::core::marker::Send,
+{
+    async fn values(
+        self: ::std::sync::Arc<Self>,
+    ) -> Fallible<(BoxedStream<VideoUrl>, BoxedStream<PlaylistUrl>, BoxedStream<ChannelUrl>)> {
+        let (video_urls, playlist_urls, channel_urls) = ::tokio::try_join!(
+            ::std::sync::Arc::clone(&self).get(),
+            ::std::sync::Arc::clone(&self).get(),
+            ::std::sync::Arc::clone(&self).get(),
+        )?;
+
+        Ok((video_urls, playlist_urls, channel_urls))
+    }
+}
+
+#[async_trait]
+impl<State> Insert<VideoUrl> for CompressedSerializedFilesystemResourcesRepository<State>
+where
+    State: ::std::hash::BuildHasher + Default + ::core::marker::Send,
+{
+    async fn insert(self: ::std::sync::Arc<Self>, url: VideoUrl) -> Fallible<()> {
+        use ::tokio::io::AsyncSeekExt as _;
+
+        let mut urls: ::std::collections::HashSet<VideoUrl, State> = ::std::sync::Arc::clone(&self).get().await?;
+        urls.insert(url);
+
+        let urls = urls
+            .into_iter()
+            .map(Into::into)
+            .collect();
+
+        let buffer = ::std::sync::Arc::clone(&self.serializer).serialize(urls)?;
+        let buffer = ::std::sync::Arc::clone(&self.compressor).compress(buffer)?;
+
+        let mut file = self.video_urls_file.lock().await;
+        file.seek(::std::io::SeekFrom::Start(0)).await?;
+        file.set_len(0).await?;
+        
+        file.write_all(&buffer).await?;
+        file.flush().await?;
+
+        Ok(())
+    }
+}
+
+#[async_trait]
+impl<State> Insert<PlaylistUrl> for CompressedSerializedFilesystemResourcesRepository<State>
+where
+    State: ::std::hash::BuildHasher + Default + ::core::marker::Send,
+{
+    async fn insert(self: ::std::sync::Arc<Self>, url: PlaylistUrl) -> Fallible<()> {
+        use ::tokio::io::AsyncSeekExt as _;
+
+        let mut urls: ::std::collections::HashSet<PlaylistUrl, State> = ::std::sync::Arc::clone(&self).get().await?;
+        urls.insert(url);
+
+        let urls = urls
+            .into_iter()
+            .map(Into::into)
+            .collect();
+
+        let buffer = ::std::sync::Arc::clone(&self.serializer).serialize(urls)?;
+        let buffer = ::std::sync::Arc::clone(&self.compressor).compress(buffer)?;
+
+        let mut file = self.playlist_urls_file.lock().await;
+        file.seek(::std::io::SeekFrom::Start(0)).await?;
+        file.set_len(0).await?;
+        
+        file.write_all(&buffer).await?;
+        file.flush().await?;
+
+        Ok(())
+    }
+}
+
+#[async_trait]
+impl<State> Insert<ChannelUrl> for CompressedSerializedFilesystemResourcesRepository<State>
+where
+    State: ::std::hash::BuildHasher + Default + ::core::marker::Send,
+{
+    async fn insert(self: ::std::sync::Arc<Self>, url: ChannelUrl) -> Fallible<()> {
+        use ::tokio::io::AsyncSeekExt as _;
+
+        let mut urls: ::std::collections::HashSet<ChannelUrl, State> = ::std::sync::Arc::clone(&self).get().await?;
+        urls.insert(url);
+
+        let urls = urls
+            .into_iter()
+            .map(Into::into)
+            .collect();
+
+        let buffer = ::std::sync::Arc::clone(&self.serializer).serialize(urls)?;
+        let buffer = ::std::sync::Arc::clone(&self.compressor).compress(buffer)?;
+
+        let mut file = self.channel_urls_file.lock().await;
+        file.seek(::std::io::SeekFrom::Start(0)).await?;
+        file.set_len(0).await?;
+        
+        file.write_all(&buffer).await?;
+        file.flush().await?;
+
+        Ok(())
+    }
+}
+
+#[async_trait]
+impl<State> Get<BoxedStream<VideoUrl>> for CompressedSerializedFilesystemResourcesRepository<State>
+where
+    State: ::std::hash::BuildHasher + Default,
+{
+    async fn get(self: ::std::sync::Arc<Self>) -> Fallible<BoxedStream<VideoUrl>> {
+        let urls: ::std::collections::HashSet<VideoUrl, State> = self.get().await?;
+        Ok(::std::boxed::Box::pin(::futures::stream::iter(urls)))
+    }
+}
+
+#[async_trait]
+impl<State> Get<BoxedStream<PlaylistUrl>> for CompressedSerializedFilesystemResourcesRepository<State>
+where
+    State: ::std::hash::BuildHasher + Default,
+{
+    async fn get(self: ::std::sync::Arc<Self>) -> Fallible<BoxedStream<PlaylistUrl>> {
+        let urls: ::std::collections::HashSet<PlaylistUrl, State> = self.get().await?;
+        Ok(::std::boxed::Box::pin(::futures::stream::iter(urls)))
+    }
+}
+
+#[async_trait]
+impl<State> Get<BoxedStream<ChannelUrl>> for CompressedSerializedFilesystemResourcesRepository<State>
+where
+    State: ::std::hash::BuildHasher + Default,
+{
+    async fn get(self: ::std::sync::Arc<Self>) -> Fallible<BoxedStream<ChannelUrl>> {
+        let urls: ::std::collections::HashSet<ChannelUrl, State> = self.get().await?;
+        Ok(::std::boxed::Box::pin(::futures::stream::iter(urls)))
+    }
+}
+
+#[async_trait]
+impl<State> Get<::std::collections::HashSet<VideoUrl, State>> for CompressedSerializedFilesystemResourcesRepository<State>
+where
+    State: ::std::hash::BuildHasher + Default,
+{
+    async fn get(self: ::std::sync::Arc<Self>) -> Fallible<::std::collections::HashSet<VideoUrl, State>> {
+        use ::tokio::io::AsyncSeekExt as _;
+
+        let mut file = self.video_urls_file.lock().await;
+        file.seek(::std::io::SeekFrom::Start(0)).await?;
+
+        let mut buffer = Vec::new();
+        file.read_to_end(&mut buffer).await?;
+
+        let buffer = ::std::sync::Arc::clone(&self.compressor).decompress(buffer)?;
+        let urls = ::std::sync::Arc::clone(&self.serializer).deserialize(buffer)?;
+
+        let urls = urls
+            .into_iter()
+            .map(Into::into)
+            .collect();
+
+        Ok(urls)
+    }
+}
+
+#[async_trait]
+impl<State> Get<::std::collections::HashSet<PlaylistUrl, State>> for CompressedSerializedFilesystemResourcesRepository<State>
+where
+    State: ::std::hash::BuildHasher + Default,
+{
+    async fn get(self: ::std::sync::Arc<Self>) -> Fallible<::std::collections::HashSet<PlaylistUrl, State>> {
+        use ::tokio::io::AsyncSeekExt as _;
+
+        let mut file = self.playlist_urls_file.lock().await;
+        file.seek(::std::io::SeekFrom::Start(0)).await?;
+
+        let mut buffer = Vec::new();
+        file.read_to_end(&mut buffer).await?;
+
+        let buffer = ::std::sync::Arc::clone(&self.compressor).decompress(buffer)?;
+        let urls = ::std::sync::Arc::clone(&self.serializer).deserialize(buffer)?;
+
+        let urls = urls
+            .into_iter()
+            .map(Into::into)
+            .collect();
+
+        Ok(urls)
+    }
+}
+
+#[async_trait]
+impl<State> Get<::std::collections::HashSet<ChannelUrl, State>> for CompressedSerializedFilesystemResourcesRepository<State>
+where
+    State: ::std::hash::BuildHasher + Default,
+{
+    async fn get(self: ::std::sync::Arc<Self>) -> Fallible<::std::collections::HashSet<ChannelUrl, State>> {
+        use ::tokio::io::AsyncSeekExt as _;
+
+        let mut file = self.channel_urls_file.lock().await;
+        file.seek(::std::io::SeekFrom::Start(0)).await?;
+
+        let mut buffer = Vec::new();
+        file.read_to_end(&mut buffer).await?;
+
+        let buffer = ::std::sync::Arc::clone(&self.compressor).decompress(buffer)?;
+        let urls = ::std::sync::Arc::clone(&self.serializer).deserialize(buffer)?;
+
+        let urls = urls
+            .into_iter()
+            .map(Into::into)
+            .collect();
+
+        Ok(urls)
     }
 }
 
@@ -258,9 +475,7 @@ where
     State: ::std::hash::BuildHasher + Default,
 {
     fn serialize(self: ::std::sync::Arc<Self>, payload: ::std::collections::HashSet<MaybeOwnedString, State>) -> Fallible<Buffer> {
-        let mut buffer = vec![];
-
-        ::bincode::encode_into_slice(payload, &mut buffer, self.configurations)?;
+        let buffer = ::bincode::encode_to_vec(payload, self.configurations)?;
 
         Ok(buffer)
     }
