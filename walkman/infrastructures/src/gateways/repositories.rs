@@ -165,14 +165,14 @@ impl Get<BoxedStream<ChannelUrl>> for FilesystemResourcesRepository {
 #[derive(::bon::Builder)]
 #[builder(on(_, into), finish_fn(name = _build, vis = "pub(self)"))]
 pub struct CompressedSerializedFilesystemResourcesRepository<State = ::std::hash::RandomState> {
-    #[builder(field = unreachable!())]
-    video_urls_file: ::tokio::sync::Mutex<::tokio::fs::File>,
+    #[builder(field = ::std::mem::MaybeUninit::uninit())]
+    video_urls_file: ::std::mem::MaybeUninit<::tokio::sync::Mutex<::tokio::fs::File>>,
 
-    #[builder(field = unreachable!())]
-    playlist_urls_file: ::tokio::sync::Mutex<::tokio::fs::File>,
+    #[builder(field = ::std::mem::MaybeUninit::uninit())]
+    playlist_urls_file: ::std::mem::MaybeUninit<::tokio::sync::Mutex<::tokio::fs::File>>,
 
-    #[builder(field = unreachable!())]
-    channel_urls_file: ::tokio::sync::Mutex<::tokio::fs::File>,
+    #[builder(field = ::std::mem::MaybeUninit::uninit())]
+    channel_urls_file: ::std::mem::MaybeUninit<::tokio::sync::Mutex<::tokio::fs::File>>,
 
     serializer: ::std::sync::Arc<dyn Serializer<::std::collections::HashSet<MaybeOwnedString, State>>>,
     compressor: ::std::sync::Arc<dyn Compressor>,
@@ -225,9 +225,9 @@ where
 
         let mut output = self._build();
 
-        output.video_urls_file = ::tokio::sync::Mutex::new(video_urls_file);
-        output.playlist_urls_file = ::tokio::sync::Mutex::new(playlist_urls_file);
-        output.channel_urls_file = ::tokio::sync::Mutex::new(channel_urls_file);
+        output.video_urls_file.write(::tokio::sync::Mutex::new(video_urls_file));
+        output.playlist_urls_file.write(::tokio::sync::Mutex::new(playlist_urls_file));
+        output.channel_urls_file.write(::tokio::sync::Mutex::new(channel_urls_file));
 
         Ok(output)
     }
@@ -268,7 +268,7 @@ where
         let buffer = ::std::sync::Arc::clone(&self.serializer).serialize(urls)?;
         let buffer = ::std::sync::Arc::clone(&self.compressor).compress(buffer)?;
 
-        let mut file = self.video_urls_file.lock().await;
+        let mut file = unsafe { self.video_urls_file.assume_init_ref() }.lock().await;
         file.seek(::std::io::SeekFrom::Start(0)).await?;
         file.set_len(0).await?;
 
@@ -296,7 +296,7 @@ where
         let buffer = ::std::sync::Arc::clone(&self.serializer).serialize(urls)?;
         let buffer = ::std::sync::Arc::clone(&self.compressor).compress(buffer)?;
 
-        let mut file = self.playlist_urls_file.lock().await;
+        let mut file = unsafe { self.playlist_urls_file.assume_init_ref() }.lock().await;
         file.seek(::std::io::SeekFrom::Start(0)).await?;
         file.set_len(0).await?;
 
@@ -324,7 +324,7 @@ where
         let buffer = ::std::sync::Arc::clone(&self.serializer).serialize(urls)?;
         let buffer = ::std::sync::Arc::clone(&self.compressor).compress(buffer)?;
 
-        let mut file = self.channel_urls_file.lock().await;
+        let mut file = unsafe { self.channel_urls_file.assume_init_ref() }.lock().await;
         file.seek(::std::io::SeekFrom::Start(0)).await?;
         file.set_len(0).await?;
 
@@ -378,7 +378,7 @@ where
         use ::tokio::io::AsyncReadExt as _;
         use ::tokio::io::AsyncSeekExt as _;
 
-        let mut file = self.video_urls_file.lock().await;
+        let mut file = unsafe { self.video_urls_file.assume_init_ref() }.lock().await;
         file.seek(::std::io::SeekFrom::Start(0)).await?;
 
         let mut buffer = Vec::new();
@@ -403,7 +403,7 @@ where
         use ::tokio::io::AsyncReadExt as _;
         use ::tokio::io::AsyncSeekExt as _;
 
-        let mut file = self.playlist_urls_file.lock().await;
+        let mut file = unsafe { self.playlist_urls_file.assume_init_ref() }.lock().await;
         file.seek(::std::io::SeekFrom::Start(0)).await?;
 
         let mut buffer = Vec::new();
@@ -428,7 +428,7 @@ where
         use ::tokio::io::AsyncReadExt as _;
         use ::tokio::io::AsyncSeekExt as _;
 
-        let mut file = self.channel_urls_file.lock().await;
+        let mut file = unsafe { self.channel_urls_file.assume_init_ref() }.lock().await;
         file.seek(::std::io::SeekFrom::Start(0)).await?;
 
         let mut buffer = Vec::new();
@@ -471,6 +471,10 @@ where
     fn deserialize(
         self: ::std::sync::Arc<Self>, buffer: Buffer,
     ) -> Fallible<::std::collections::HashSet<MaybeOwnedString, State>> {
+        if buffer.is_empty() {
+            return Ok(Default::default());
+        }
+
         let (payload, _) = ::bincode::decode_from_slice(&buffer, self.configurations)?;
 
         Ok(payload)

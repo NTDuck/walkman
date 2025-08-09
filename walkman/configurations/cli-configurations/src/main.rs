@@ -92,13 +92,13 @@ async fn main() -> Fallible<()> {
         .ok()?.to_owned().into();
 
     let video_urls_path: MaybeOwnedPath = matches.get_one::<::std::path::PathBuf>("video-urls-path").cloned()
-        .unwrap_or_else(|| directory.join("persist/video-urls.bin"))
+        .unwrap_or_else(|| directory.join("video-urls.bin"))
         .to_owned().into();
     let playlist_urls_path: MaybeOwnedPath = matches.get_one::<::std::path::PathBuf>("playlist-urls-path").cloned()
-        .unwrap_or_else(|| directory.join("persist/playlist-urls.bin"))
+        .unwrap_or_else(|| directory.join("playlist-urls.bin"))
         .to_owned().into();
     let channel_urls_path: MaybeOwnedPath = matches.get_one::<::std::path::PathBuf>("channel-urls-path").cloned()
-        .unwrap_or_else(|| directory.join("persist/channel-urls.bin"))
+        .unwrap_or_else(|| directory.join("channel-urls.bin"))
         .to_owned().into();
 
     let workers = matches.get_one::<u64>("workers").ok().copied()
@@ -223,7 +223,7 @@ async fn main() -> Fallible<()> {
                 .build();
             download_channel_interactor.accept(request).await?;
         },
-        Some(("update", _)) => {
+        Some(("update-media", _)) => {
             let request = UpdateMediaRequestModel;
             update_media_interactor.accept(request).await?;
         },
